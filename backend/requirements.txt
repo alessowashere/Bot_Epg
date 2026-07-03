@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+pymysql
+playwright
+python-multipart
+pdfplumber
+python-docx
+python-jose[cryptography]

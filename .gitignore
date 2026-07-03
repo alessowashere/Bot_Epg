@@ -1,0 +1,62 @@
+# ══════════════════════════════════════════════
+# .gitignore — EPG-UAC Sistema de Posgrado
+# ══════════════════════════════════════════════
+
+# ── Archivos sensibles / credenciales ─────────
+backend/auth.json
+backend/drive_credentials*.json
+backend/credentials*.json
+backend/token*.json
+backend/service_account*.json
+*.pem
+*.key
+*.env
+.env
+.env.*
+
+# ── Entorno virtual Python ────────────────────
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# ── Uploads (archivos pesados del servidor) ───
+uploads/
+temp_adjuntos/
+backend/temp_adjuntos/
+
+# ── Logs ─────────────────────────────────────
+*.log
+backend/sincronizador.log
+
+# ── Node / Frontend ───────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+
+# ── Editor / OS ───────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── Base de datos / dumps ─────────────────────
+# (descomenta si no quieres subir el .sql con datos reales)
+# bd.sql
