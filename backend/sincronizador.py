@@ -169,7 +169,7 @@ def actualizar_estado_descarga(db, ticket_id: int, num_archivos: int, descargado
 def asegurar_sesion(browser):
     if not Path(ARCHIVO_SESION).exists():
         logger.info("No existe auth.json; generando sesion.")
-        generar_sesion()
+        generar_sesion(browser)
 
     context = browser.new_context(storage_state=ARCHIVO_SESION)
     page = context.new_page()
@@ -181,7 +181,7 @@ def asegurar_sesion(browser):
 
     logger.info("Sesion expirada; renovando auth.json.")
     context.close()
-    if not generar_sesion():
+    if not generar_sesion(browser):
         raise RuntimeError("No se pudo renovar auth.json de osTicket")
 
     context = browser.new_context(storage_state=ARCHIVO_SESION)

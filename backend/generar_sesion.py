@@ -21,7 +21,7 @@ def _cargar_env_local():
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
-def generar_sesion() -> bool:
+def generar_sesion(browser_instance=None) -> bool:
     _cargar_env_local()
     usuario = os.getenv("OSTICKET_USER")
     password = os.getenv("OSTICKET_PASSWORD")
@@ -33,11 +33,10 @@ def generar_sesion() -> bool:
     Path(archivo_sesion).parent.mkdir(parents=True, exist_ok=True)
 
     print("Iniciando navegador para renovar sesion de osTicket...")
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
-        page = context.new_page()
 
+    def _hacer_login(b):
+        context = b.new_context()
+        page = context.new_page()
         print(f"Navegando a {URL_LOGIN}...")
         page.goto(URL_LOGIN)
         page.fill("input[name='userid']", usuario)
@@ -47,13 +46,22 @@ def generar_sesion() -> bool:
 
         if "login.php" in page.url:
             print("ERROR: el login fallo. Verifica credenciales o captcha.")
-            browser.close()
+            context.close()
             return False
 
         context.storage_state(path=archivo_sesion)
         print(f"Sesion guardada correctamente en {archivo_sesion}.")
-        browser.close()
+        context.close()
         return True
+
+    if browser_instance:
+        return _hacer_login(browser_instance)
+    else:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            res = _hacer_login(browser)
+            browser.close()
+            return res
 
 
 if __name__ == "__main__":
