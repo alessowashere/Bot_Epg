@@ -53,47 +53,56 @@
       <table v-else class="data-table">
         <thead>
           <tr>
-            <th>Alumno</th>
+            <th>Estudiante y Expediente</th>
             <th class="hidden md:table-cell">Grado</th>
-            <th>Paso actual</th>
-            <th>Estado</th>
-            <th class="hidden lg:table-cell">Sub estado</th>
-            <th class="hidden lg:table-cell">&Uacute;ltimo movimiento</th>
+            <th>Paso Actual</th>
+            <th>Estado Principal</th>
+            <th class="hidden lg:table-cell">Sub Estado</th>
+            <th class="hidden lg:table-cell">Últ. Movimiento</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="expedientes.length === 0">
-            <td colspan="7" class="text-center py-12 text-slate-500">No hay expedientes con estos filtros</td>
+            <td colspan="7" class="text-center py-12 text-slate-500 font-medium">No se encontraron expedientes con los filtros aplicados.</td>
           </tr>
-          <tr v-for="exp in expedientes" :key="exp.uuid || exp.id_expediente" class="cursor-pointer" @click="abrirExpediente(exp)">
+          <tr v-for="exp in expedientes" :key="exp.uuid || exp.id_expediente" class="cursor-pointer hover:bg-slate-700/20 transition-colors" @click="abrirExpediente(exp)">
             <td>
-              <div>
-                <p class="font-semibold text-white">{{ exp.nombre_alumno }}</p>
-                <p class="text-xs font-mono text-slate-500">{{ exp.codigo_alumno }}</p>
-                <p v-if="exp.titulo_tesis" class="text-xs text-slate-400 truncate-2 mt-0.5 max-w-xs hidden xl:block">{{ exp.titulo_tesis }}</p>
+              <div class="flex items-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-lg shadow-lg flex-shrink-0">
+                  {{ exp.nombre_alumno.charAt(0).toUpperCase() }}
+                </div>
+                <div>
+                  <p class="font-bold text-white text-[15px] tracking-tight">{{ exp.nombre_alumno }}</p>
+                  <p class="text-xs font-mono text-indigo-300 mt-0.5 font-semibold">EXP-2026-{{ String(exp.id_expediente).padStart(4, '0') }} <span class="text-slate-500">| {{ exp.codigo_alumno }}</span></p>
+                  <p v-if="exp.titulo_tesis" class="text-xs text-slate-400 mt-1 max-w-sm hidden xl:block leading-relaxed" :title="exp.titulo_tesis">
+                    {{ exp.titulo_tesis.length > 80 ? exp.titulo_tesis.substring(0, 80) + '...' : exp.titulo_tesis }}
+                  </p>
+                </div>
               </div>
             </td>
             <td class="hidden md:table-cell">
-              <span :class="exp.grado_postula === 'Doctor' ? 'badge bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'badge bg-blue-500/20 text-blue-300 border border-blue-500/30'">
+              <span :class="exp.grado_postula === 'Doctor' ? 'px-3 py-1 text-xs font-bold rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'px-3 py-1 text-xs font-bold rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-[0_0_10px_rgba(59,130,246,0.2)]'">
                 {{ exp.grado_postula }}
               </span>
             </td>
             <td>
-              <div class="flex items-center gap-2">
-                <div class="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">{{ exp.id_paso_actual }}</div>
-                <span class="text-xs text-slate-300 hidden xl:block">{{ exp.nombre_paso_actual }}</span>
+              <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-slate-700/80 border border-slate-600 shadow-inner flex items-center justify-center text-xs font-black text-indigo-400 flex-shrink-0">
+                  {{ exp.id_paso_actual }}
+                </div>
+                <span class="text-xs font-semibold text-slate-200 hidden xl:block">{{ exp.nombre_paso_actual }}</span>
               </div>
             </td>
-            <td><span :class="badgeEstado(exp.estado_expediente)">{{ exp.estado_expediente }}</span></td>
+            <td><span :class="badgeEstado(exp.estado_expediente) + ' shadow-sm'">{{ exp.estado_expediente }}</span></td>
             <td class="hidden lg:table-cell">
-              <span v-if="exp.sub_estado" class="badge-observado">{{ exp.sub_estado }}</span>
-              <span v-else class="text-xs text-slate-600">-</span>
+              <span v-if="exp.sub_estado" class="badge-observado text-[11px] uppercase tracking-wider">{{ exp.sub_estado }}</span>
+              <span v-else class="text-xs text-slate-600 font-medium">-</span>
             </td>
-            <td class="hidden lg:table-cell text-xs text-slate-500">{{ exp.fecha_ultimo_movimiento }}</td>
+            <td class="hidden lg:table-cell text-xs text-slate-400 font-mono">{{ exp.fecha_ultimo_movimiento }}</td>
             <td>
-              <button class="btn-ghost btn-sm" @click.stop="abrirExpediente(exp)">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+              <button class="w-8 h-8 rounded-full bg-slate-800 hover:bg-indigo-600 text-slate-400 hover:text-white flex items-center justify-center transition-all shadow-md" @click.stop="abrirExpediente(exp)">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
               </button>
             </td>
           </tr>

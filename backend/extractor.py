@@ -142,8 +142,10 @@ def analizar_caratula(texto: str) -> dict:
                 continue
             lineas_filtradas.append(l)
         titulo = " ".join(lineas_filtradas).strip('"').strip('“').strip('”').strip()
-
-    # 2. Intentar detectar Alumno (Tesista)
+        
+        # CORTAFUEGOS: Si el título excede 250 caracteres, probablemente fue un error de extracción masiva
+        if len(titulo) > 250:
+            titulo = titulo[:247] + "..."    # 2. Intentar detectar Alumno (Tesista)
     alumno = ""
     if idx_presentado != -1:
         bloque_alumno = texto_limpio[idx_presentado:]
@@ -160,8 +162,11 @@ def analizar_caratula(texto: str) -> dict:
         lineas_alu = [l.strip() for l in alumno_raw.split("\n") if l.strip()]
         if lineas_alu:
             n_alu = lineas_alu[0]
-            n_alu = re.sub(r"^(br\.|bach\.|bachiller|lic\.|ing\.)\s*", "", n_alu, flags=re.IGNORECASE).strip()
-            alumno = n_alu
+            n_alu = re.sub(r"^(br\.|bach\.|bachiller|lic\.|ing\.|don\.|doña|sr\.|sra\.)\s*", "", n_alu, flags=re.IGNORECASE).strip()
+            # Limpiar cualquier texto largo basura
+            if " el " in n_alu.lower() or "%" in n_alu or len(n_alu) > 100:
+                n_alu = n_alu[:100].split(",")[0]  # intentar quedarnos con algo limpio
+            alumno = n_alu[:100]
 
     # 3. Intentar detectar Grado
     grado = None
@@ -197,6 +202,8 @@ def analizar_caratula(texto: str) -> dict:
         if lineas_ase:
             n_ase = lineas_ase[0]
             n_ase = re.sub(r"^(dr\.|dra\.|mg\.|mgt\.|mag\.)\s*", "", n_ase, flags=re.IGNORECASE).strip()
+            if len(n_ase) > 100:
+                n_ase = n_ase[:100]
             asesor = n_ase
 
     # 5. ORCIDs
