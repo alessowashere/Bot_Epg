@@ -1,23 +1,29 @@
-import time
-import subprocess
 import logging
+import subprocess
+from pathlib import Path
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SupervisorBot")
 
+
 def ejecutar_ciclo():
-    logger.info("🚀 Iniciando ciclo de scraping...")
-    # Ejecutamos el sincronizador esperando a que termine
-    resultado = subprocess.run(["python3", "sincronizador.py"], capture_output=True, text=True)
-    
+    logger.info("Iniciando ciclo de scraping...")
+    backend_dir = Path(__file__).resolve().parent
+    resultado = subprocess.run(
+        ["python3", "sincronizador.py"],
+        cwd=str(backend_dir),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
     if resultado.returncode == 0:
-        logger.info("✅ Sincronización exitosa.")
+        logger.info("Sincronizacion exitosa.")
     else:
-        logger.error(f"❌ Error en sincronización: {resultado.stderr}")
+        logger.error("Error en sincronizacion: %s", resultado.stderr)
+    return resultado.returncode
+
 
 if __name__ == "__main__":
-    # Bucle infinito que duerme 15 minutos entre cada pasada
-    while True:
-        ejecutar_ciclo()
-        logger.info("💤 Durmiendo 15 minutos...")
-        time.sleep(900)
+    raise SystemExit(ejecutar_ciclo())

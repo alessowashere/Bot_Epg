@@ -1,0 +1,15 @@
+[Unit]
+Description=EPG-UAC osTicket sync bot
+Wants=network-online.target
+After=network-online.target mariadb.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/sistema_posgrado/backend
+EnvironmentFile=-/opt/sistema_posgrado/backend/.env
+ExecStart=/usr/bin/python3 /opt/sistema_posgrado/backend/supervisor_bot.py
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

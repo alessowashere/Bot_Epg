@@ -1,48 +1,60 @@
+import os
+from pathlib import Path
+
 from playwright.sync_api import sync_playwright
-import time
 
-# --- CONFIGURACIÓN ---
-# Cambia esto por la URL real del panel de agentes (scp) de tu osTicket
-URL_LOGIN = "https://mesadepartes.uandina.edu.pe/scp/login.php" 
-USUARIO = "epg_tramites@uandina.edu.pe"
-PASSWORD = "mesadepartes"
-ARCHIVO_SESION = "auth.json"
-# ---------------------
 
-def generar_sesion():
-    print("Iniciando navegador en modo background...")
+URL_LOGIN = os.getenv("OSTICKET_URL_LOGIN", "https://mesadepartes.uandina.edu.pe/scp/login.php")
+ARCHIVO_SESION = os.getenv("OSTICKET_AUTH_FILE", "/opt/sistema_posgrado/backend/auth.json")
+
+
+def _cargar_env_local():
+    env_path = Path(__file__).with_name(".env")
+    if not env_path.exists():
+        return
+
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+def generar_sesion() -> bool:
+    _cargar_env_local()
+    usuario = os.getenv("OSTICKET_USER")
+    password = os.getenv("OSTICKET_PASSWORD")
+
+    if not usuario or not password:
+        raise RuntimeError("Faltan OSTICKET_USER y OSTICKET_PASSWORD en variables de entorno o backend/.env")
+
+    archivo_sesion = os.getenv("OSTICKET_AUTH_FILE", ARCHIVO_SESION)
+    Path(archivo_sesion).parent.mkdir(parents=True, exist_ok=True)
+
+    print("Iniciando navegador para renovar sesion de osTicket...")
     with sync_playwright() as p:
-        # Lanzamos Chromium en modo headless (sin interfaz gráfica)
         browser = p.chromium.launch(headless=True)
         context = browser.new_context()
         page = context.new_page()
 
         print(f"Navegando a {URL_LOGIN}...")
         page.goto(URL_LOGIN)
-
-        # Rellenar credenciales. 
-        # Nota: osTicket por defecto usa los names 'userid' y 'passwd'
-        print("Ingresando credenciales...")
-        page.fill("input[name='userid']", USUARIO)
-        page.fill("input[name='passwd']", PASSWORD)
-
-        # Hacer clic en el botón de login
-        print("Iniciando sesión...")
+        page.fill("input[name='userid']", usuario)
+        page.fill("input[name='passwd']", password)
         page.click("input[type='submit'], button[type='submit']")
-
-        # Esperamos a que la red se estabilice para asegurar que el login fue exitoso
         page.wait_for_load_state("networkidle")
 
-        # Verificación rápida: comprobamos si la URL cambió o si estamos dentro
         if "login.php" in page.url:
-            print("ERROR: El login falló. Verifica tus credenciales o si hay un Captcha.")
-        else:
-            # ¡Éxito! Guardamos las cookies y el estado en auth.json
-            context.storage_state(path=ARCHIVO_SESION)
-            print(f"¡Éxito! Sesión guardada correctamente en el archivo '{ARCHIVO_SESION}'.")
-            print("Ya puedes usar este archivo para tu script principal.")
+            print("ERROR: el login fallo. Verifica credenciales o captcha.")
+            browser.close()
+            return False
 
+        context.storage_state(path=archivo_sesion)
+        print(f"Sesion guardada correctamente en {archivo_sesion}.")
         browser.close()
+        return True
+
 
 if __name__ == "__main__":
     generar_sesion()
