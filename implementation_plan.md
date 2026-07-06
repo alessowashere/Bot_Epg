@@ -1,94 +1,96 @@
-# Documento de Arquitectura y Especificación Técnica Master (Sistema Bot EPG)
+# 🎓 Proyecto: TesisTrack 7 EPG (Bot Posgrado UAC)
+*Documento de Arquitectura y Especificación Técnica Master*
 
-Este documento es el **blueprint técnico** definitivo del sistema. Detalla línea por línea la arquitectura actual, los motores lógicos y la hoja de ruta de los módulos que se construirán en las siguientes fases. Está diseñado para que cualquier ingeniero de software pueda comprender el flujo integral de datos entre osTicket, la Base de Datos, el Motor de Scraping y el Frontend en Vue 3.
+> [!NOTE]
+> **Sobre el Nombre ("TesisTrack 7 UAC"):** Nombre basado en el PDF oficial de normativas, haciendo alusión a la automatización del riguroso flujo de **7 pasos** para optar al grado de Maestro y Doctor en la UAC.
+
+Este documento es el **blueprint técnico definitivo**. Fusiona el máximo detalle a nivel de código (Regex, bases de datos, workers) con la nueva hoja de ruta visual, el manejo de roles y las estrategias de despliegue (DevOps) para mantener el servidor funcionando de forma autónoma.
 
 ---
 
 ## 1. Topología del Sistema y Stack Tecnológico
 
-El sistema consta de una arquitectura de microservicios acoplada, operando bajo un entorno Linux (Debian) y dividida en tres capas:
-- **Core Automation (Background Workers):** Python 3.11, Playwright (Headless Chromium), PyPDF2/pdfplumber, NLTK/Regex.
-- **Backend API (Capa Lógica):** FastAPI, SQLAlchemy (ORM), Pydantic (Validación).
-- **Frontend (Capa de Presentación):** Vue 3 (Composition API), Vite, TailwindCSS / PrimeVue.
+Arquitectura de microservicios acoplada operando en Linux (Debian):
+- **Core Automation:** Python 3.11, Playwright (Headless Chromium), PyPDF2/pdfplumber, NLTK/Regex.
+- **Backend API:** FastAPI, SQLAlchemy (ORM), Pydantic.
+- **Frontend:** Vue 3 (Composition API), Vite, TailwindCSS, PrimeVue.
 - **Persistencia:** MariaDB Relacional + Sistema de Archivos Local (migrable a Google Drive).
 
 ---
 
-## 2. Componentes Existentes (Estado Actual de Producción)
+## 2. DevOps y Despliegue (Automatización de Servicios)
 
-### 2.1. Sincronizador Headless (El Scraper)
-Ubicado en `sincronizador.py` y `supervisor_bot.py`.
-- **Ejecución y Tolerancia:** Orquestado vía un `systemd timer` (`bot_posgrado.timer`) que invoca al supervisor cada 15 minutos. El supervisor usa `subprocess` con `sys.executable` para evitar colapsos de memoria y asegurar la herencia del entorno virtual.
-- **Gestión de Sesión:** `generar_sesion.py` inyecta credenciales en el login de osTicket, guarda el estado de las cookies en `auth.json` y permite reutilizar contextos del navegador (`browser.new_context()`). Si el framework detecta una redirección a `login.php`, destruye el contexto y regenera la sesión automáticamente (previniendo loops de Playwright).
-- **Iterador de Cola (Paginación por URL):** La función `listar_tickets_todas_paginas` itera incrementando `?queue=1&p=N` para evitar interactuar con botones del DOM inestables. Rastrea los `id_interno` en un `set()` para evitar duplicidad intra-ciclo.
-- **Normalización de Tiempos:** La función `extraer_fecha_detalle()` parsea el DOM de osTicket (`<th>Creado en:</th>`). Se ha implementado un normalizador de `a.m.` / `p.m.` a `AM/PM` para prevenir `ValueError` en el `strptime` nativo de Python, asegurando el timestamp real de creación.
+> [!IMPORTANT]
+> **Problema:** Actualmente dejas terminales/consolas abiertas para que el Backend (Uvicorn) y Frontend (NPM) funcionen. Si cierras tu SSH, el sistema se cae.
+> **Solución:** "Demonizar" los procesos (Background Services) para que arranquen solos si el servidor se reinicia.
 
-> [!NOTE] 
-> **Sincronizador vs Backfill:** El Sincronizador (`bot_posgrado.service`) es 100% automático y continuo (cron cada 15 min). Por el contrario, el script `backfill_tickets.py` y el futuro `sync_historico_excel.py` son herramientas **manuales** de mantenimiento; solo deben ejecutarse por consola bajo demanda para procesar tickets atascados o realizar cruces masivos iniciales sin sobrecargar la red.
+### 2.1. Demonización del Backend (Systemd)
+Se creará un archivo de servicio en `/etc/systemd/system/fastapi_posgrado.service`.
+- **Lógica:** Ejecutará `uvicorn main:app --host 0.0.0.0 --port 8000` amarrado al entorno virtual (`venv`).
+- **Comandos:** Se habilitará con `systemctl enable fastapi_posgrado.service`. Así, el backend vivirá invisible en la memoria del servidor de forma perpetua.
 
-### 2.2. Motor de Extracción NLP / Regex (`extractor.py`)
-Encargado de inferir y estructurar data no estructurada de los textos y adjuntos PDF.
-- **Extracción de Cuerpo:** Usa Regex compiladas (`re.compile`) para detectar DNIs (`\d{8}`), correos UAC (`[a-zA-Z0-9]{6,15}@uandina.edu.pe`), Nros de Expediente y Resoluciones.
-- **Extractor de Carátulas de Tesis (PDF):** Mediante `pdfplumber`, lee el plano vectorial del texto del PDF (solo la página 1). La función `analizar_caratula` limpia caracteres especiales (`\r`) y usa indexación estricta (`find("presentado por")`) para extraer:
-  - **Título:** Texto extraído y depurado de comillas y cabeceras institucionales.
-  - **Alumno y Asesor:** Busca anclajes como "Presentado por:" o "Asesor:", y usa `re.sub` para purgar grados académicos previos ("Br.", "Dr.", "Mg.").
-  - **ORCIDs:** Identificados por el regex `https?://orcid.org/\d{4}-\d{4}-\d{4}-\d{3}[\dX]`.
-
-### 2.3. Autopoblación y API REST (`main.py`)
-- **Flujo de Extracción Background:** Cuando el Sincronizador descarga un PDF, llama a `ejecutar_extraccion()`. Si el extractor encuentra una carátula:
-  1. Busca si el alumno ya existe en `ExpedienteTesis` vía `codigo_alumno`.
-  2. Si no, **crea automáticamente el expediente** (Paso 1).
-  3. Crea dinámicamente el `Docente` (Asesor) en estado Activo y genera la `AsignacionTesis`.
-- **Links Mágicos (Criptografía Básica):** Todos los expedientes y asignaciones cuentan con un `uuid` (UUIDv4). Cuando el dictaminante recibe el correo institucional (vía `notificador.py` usando `smtplib`), hace clic en una ruta del frontend `/dictaminante/{uuid}` que se autentica en la API sin JWT ni passwords.
-- **Paginación y Filtros (API):** `listar_expedientes` inyecta parámetros `Query` opcionales en SQLAlchemy (`id_paso`, `estado`, `fecha_desde`, `fecha_hasta`).
+### 2.2. Demonización del Frontend (Nginx o PM2)
+Hay dos vías para que el Vue no requiera una terminal abierta:
+- **Opción A (Producción Real - Recomendada):** Ejecutar `npm run build` para compilar Vue en archivos estáticos puros (HTML/JS) y servirlos a través de un proxy inverso con **Nginx**. Nginx es nativo de Linux y siempre está encendido.
+- **Opción B (Modo Desarrollo Persistente):** Instalar el gestor de procesos de Node (`npm i -g pm2`) y ejecutar `pm2 start npm --name "vue-frontend" -- run dev`. Usar `pm2 startup` para que reviva si el VPS se reinicia.
 
 ---
 
-## 3. Hoja de Ruta Inmediata (Ingeniería Pendiente)
+## 3. Componentes Existentes (Estado Actual de Producción)
 
-### 3.1. Script Transaccional de Conciliación (Cruce DB vs Excel)
-**Objetivo:** Clasificar de golpe los 1400 tickets históricos sin intervención humana utilizando los Excels subidos por el área administrativa.
-- **Mecanismo Técnico (`sync_historico_excel.py`):**
-  - **Extracción de Diccionarios:** Se cargarán los DataFrames del Excel y se cruzarán contra la tabla `expedientes_tesis`.
-  - **Fuzzy String Matching:** Dado que el nombre en osTicket puede ser "Juan Pando" y en el Excel "Pando Delgadillo, Juan Eduardo", se usará `thefuzz.process.extractOne()` con un umbral (Threshold) del 85% para enlazar el `id_expediente` con la fila del Excel.
-  - **Motor de Inferencia de Estados (Switch):** Si la columna "Trámite" o "Resolución" contiene palabras clave ("Designación de Jurados", "Dictamen", "Declarado Apto"), el script actualizará el `id_paso_actual` (del 1 al 7) y mutará el `estado_scraping` a "Clasificado".
-  - **Commit Transaccional:** Se ejecutará bajo un `db.commit()` masivo, con `db.rollback()` en caso de inconsistencia.
+### 3.1. Sincronizador Headless (El Scraper)
+- **Ejecución y Tolerancia:** Orquestado vía `bot_posgrado.timer` cada 15 minutos. El supervisor usa `subprocess` con `sys.executable` para heredar el entorno y prevenir leaks de memoria.
+- **Gestión de Sesión:** `generar_sesion.py` inyecta credenciales en osTicket y guarda el estado en `auth.json`. Si detecta un desvío a `login.php`, destruye el contexto y regenera la sesión automáticamente (`browser.new_context()`).
+- **Iterador de Cola (Paginación por URL):** La función `listar_tickets_todas_paginas` muta la URL (`?queue=1&p=N`) para evitar los inestables botones DOM del paginador. Registra los `id_interno` en un `set()` para evitar duplicidad de lectura intra-ciclo.
+- **Normalización de Tiempos:** La función `extraer_fecha_detalle()` hace un parseo duro del DOM (`<th>Creado en:</th>`). Transforma `a.m.` / `p.m.` a formato compatible `AM/PM` para que el `strptime` nativo de Python no arroje error, garantizando el timestamp real.
 
-### 3.2. Desarrollo Frontend Avanzado (Módulo Espejo)
-**Objetivo:** Evitar que el personal de EPG tenga que loguearse a osTicket para derivar o responder un ticket.
-- **Componente de Interfaz (`TicketThread.vue`):** Despliegue de los arrays JSON extraídos de los hilos de osTicket. Implementación de `<DataTable>` de PrimeVue con filtros de fecha dinámicos e inputs de texto conectados a las variables reactivas de la API (`fecha_desde`, `fecha_hasta`).
-- **Endpoint de Bidireccionalidad:** Se creará un endpoint `/api/tickets/{id}/responder`. Al recibir el JSON con `tipo_nota` (Interna, Pública) y `texto`, FastAPI lo mandará a un BackgroundTask.
-- **Worker de Automatización (Playwright):** Un script headless abrirá el ticket específico, rellenará el `textarea#response`, adjuntará archivos si los hay, y hará click en "Publicar". 
+### 3.2. Motor de Extracción NLP / Regex (`extractor.py`)
+- **Extracción de Cuerpo:** Uso de expresiones regulares compiladas (`re.compile`) para pescar DNIs (`\d{8}`), y correos UAC (`[a-zA-Z0-9]{6,15}@uandina.edu.pe`).
+- **Extractor de Carátulas (PDF):** Usando `pdfplumber`, lee el plano vectorial de la pág 1. Limpia retornos de carro (`\r`) y busca el índice exacto de "presentado por" para extraer:
+  - **Título:** Texto depurado de comillas y cabeceras UAC.
+  - **Identificadores:** Extrae el ORCID con Regex (`https?://orcid.org/\d{4}-\d{4}-\d{4}-\d{3}[\dX]`).
+  - **Limpieza de Grados:** Usa `re.sub` para purgar prefijos ("Br.", "Dr.", "Mg.") en los nombres de alumnos y asesores.
 
-### 3.3. Motor Clasificador Heurístico (Trámites no-Tesis)
-**Objetivo:** Discriminar automáticamente si un ticket pertenece al flujo rígido de 7 pasos o si es un trámite simple (certificados, quejas).
-- **Lógica Vectorial Básica:** En `extractor.py`, implementaremos un pipeline que analice el `asunto` y el `cuerpo`.
-- **Diccionario de Pesos (TF-IDF estático):** 
-  - `{"constancia": +0.8, "certificado": +0.9, "queja": +0.95, "dictamen": -0.9, "sustentacion": -0.9}`
-- **Desviación de Flujo:** Si el puntaje ponderado de palabras clave de "trámite simple" cruza el umbral (0.75), se fuerza `id_paso = 0`. Esto oculta las vistas de dictaminantes y manda el expediente a un Kanban simplificado en el frontend.
+### 3.3. Autopoblación y API REST (`main.py`)
+- **Flujo de Ejecución:** Cuando el Sincronizador descarga un PDF, dispara `ejecutar_extraccion()`. Si el alumno no existe, **crea el expediente (Paso 1)**, crea el Docente (Asesor) y la tabla puente `AsignacionTesis`.
+- **Links Mágicos (Criptografía Básica):** Todo expediente genera un `uuid` (UUIDv4). `notificador.py` envía un mail (vía SMTP) al dictaminante con una ruta `/dictaminante/{uuid}` que se autentica en la API sin password.
 
-### 3.4. Sistema de Control de Versiones de Observaciones
-**Objetivo:** Rastrear cuántas veces un documento fue observado y corregido.
-- **Data Modeling:** Creación de la tabla `revisiones_tesis`:
-  - `id_revision` (PK), `id_expediente` (FK), `id_docente` (FK, autor de la corrección), `version_documento` (int), `observaciones` (Text), `fecha_revision`.
-- **Interfaz (Timeline):** Un componente visual que muestre la trazabilidad. Ej: "V1: Observado", "V2: Observado", "V3: Aprobado".
+---
 
-### 3.5. Pipeline de Integración con Google Drive
-**Objetivo:** Escalar el almacenamiento al reemplazar la carpeta local `/uploads` por Google Workspace.
-- **Capa de Abstracción (`drive_api.py`):**
-  1. Recibe el `credentials.json` de la Service Account de GCP.
-  2. Al clasificar un expediente, invoca a Drive para crear una carpeta anclada: `EPG / [2010151] PANDO DELGADILLO / Paso 1 - Proyecto`.
-  3. Ejecuta `MediaFileUpload` para subir el binario.
-  4. Extrae el `webViewLink` público y hace un `UPDATE expedientes_tesis SET url_documento = ...`.
-  5. Aplica `os.remove()` al binario local, manteniendo el VPS ligero (0 bytes de overhead de almacenamiento a largo plazo).
+## 4. Hoja de Ruta de UI/UX y Sistema Core (Módulos Pendientes)
 
-### 3.6. Sistema de Roles, Vistas UI y Dashboard Analítico
-**Objetivo:** Cubrir la falta de interfaces para los distintos actores del proceso y dotar a la dirección de métricas en tiempo real.
-- **Vistas Faltantes (RBAC):**
-  - **Recepción / Mesa de Partes:** Vista estilo Kanban de trámites "simples" para derivación manual.
-  - **Dictaminantes:** Consolidación del "Portal del Jurado", donde el docente (autenticado vía UUID mágico) visualiza su carga laboral histórica, aprueba/rechaza tesis y sube dictámenes PDF.
-  - **Directora:** Vista de aprobación final de resoluciones, con firma digital o validación de un clic.
-- **Reingeniería del Dashboard:**
-  - Sustituir las métricas estáticas actuales por gráficos dinámicos (Chart.js / Vue-Echarts).
-  - **Métricas a programar:** "Tiempo promedio de resolución por Docente", "Tesis estancadas por Paso (Cuellos de botella)", y "Volumen de tickets por mes".
-  - Endpoint dedicado `/api/metrics/dashboard` que realice agregaciones (`GROUP BY`, `AVG()`) en SQL para evitar sobrecargar el frontend.
+### 4.1. Branding, Theming y Modo Oscuro
+- **Branding:** Logo oficial UAC en Navbar (izq) y Login (centro).
+- **Dark/Light Mode (Tailwind):** Implementación de `darkMode: 'class'`. Un "Switch" global cambiará entre los colores institucionales (Claro) y un panel oscuro gris-pizarra anti-fatiga visual (Oscuro).
+
+### 4.2. Gestión de Sesiones y Roles (RBAC)
+- **Mecanismo:** Implementación de JWT (JSON Web Tokens) en FastAPI con `OAuth2PasswordBearer`.
+- **Matriz de Permisos:**
+  - `role_recepcion`: Vista Kanban para trámites simples.
+  - `role_directora`: Dashboard de aprobación final de resoluciones.
+  - `role_admin`: Control total y logs.
+  - `role_docente`: Interfaz de jurados con historial de carga laboral.
+
+### 4.3. Motor de Previsualización Universal de Archivos
+- **Imágenes (.png, .jpg):** Renderizado nativo `<img>` en modal (Lightbox).
+- **Documentos (Word, Excel):** Se inyectará la URL pública del archivo en el **Google Docs Viewer** (`https://docs.google.com/gview?url={URL}&embedded=true`) usando un iframe. Evita descargas forzosas.
+
+---
+
+## 5. Hoja de Ruta de Ingeniería Backend
+
+### 5.1. Algoritmo de Cruce Histórico (DB vs Excel)
+- **Fuzzy Matching:** Script `sync_historico_excel.py` usará la librería `thefuzz` (Levenshtein) para cruzar nombres de osTicket con las filas del Excel al 85% de exactitud.
+- **Motor de Inferencia:** Analizará cadenas en el Excel ("Resolución de Jurados", etc.) para forzar automáticamente el `id_paso_actual` de los 1400 tickets históricos.
+
+### 5.2. Módulo UI Espejo de osTicket (Bidireccional)
+- **TicketThread.vue:** Componente para leer el hilo extraído (respuestas del usuario y del agente).
+- **Inyección Playwright:** Formularios en Vue de "Nota Interna / Respuesta" mandarán payload a FastAPI. Un worker headless navegará al osTicket real y llenará el `textarea#response` en segundo plano.
+
+### 5.3. Pipeline de Integración con Google Drive
+- **Estructura Cloud:** Uso de `google-api-python-client`. FastAPI creará automáticamente: `EPG / [2010151] PANDO / Paso 1 - Proyecto / archivo.pdf`.
+- Se extraerá el `webViewLink`, actualizando la Base de Datos SQL, y se ejecutará `os.remove()` localmente para mantener el VPS al 0% de uso de disco.
+
+### 5.4. Sistema de Control de Versiones de Observaciones
+- **Modelo Relacional:** Tabla `revisiones_tesis` rastreando `version_documento` e `id_docente`.
+- **UI:** Interfaz de Timeline de correcciones (V1 observado -> V2 corregido).
