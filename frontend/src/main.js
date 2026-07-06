@@ -42,12 +42,11 @@ app.use(PrimeVue, {
   theme: {
     preset: Aura,
     options: {
-      darkModeSelector: '.dark',
+      darkModeSelector: 'html.dark',  // Aplica cuando <html class="dark">
       cssLayer: false,
     }
   },
   pt: {
-    // PassThrough global — estilo Tailwind sobre componentes PrimeVue
     button: {
       root: { class: 'transition-all duration-200' }
     }

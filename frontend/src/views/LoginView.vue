@@ -1,66 +1,81 @@
 <template>
   <div class="min-h-screen bg-slate-950 flex items-center justify-center relative overflow-hidden">
-    <!-- Fondo decorativo -->
+    <!-- Fondo decorativo animado -->
     <div class="absolute inset-0 overflow-hidden pointer-events-none">
-      <div class="absolute -top-40 -right-40 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl"></div>
-      <div class="absolute -bottom-40 -left-40 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl"></div>
+      <div class="absolute -top-40 -right-40 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl animate-pulse-slow"></div>
+      <div class="absolute -bottom-40 -left-40 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl animate-pulse-slow" style="animation-delay: 1.5s"></div>
       <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-900/5 rounded-full blur-3xl"></div>
     </div>
 
     <!-- Card de login -->
     <div class="relative z-10 w-full max-w-md mx-4 animate-fade-in">
-      <!-- Header con logo -->
+      <!-- Header con logo UAC -->
       <div class="text-center mb-8">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-2xl shadow-indigo-500/40 mb-4">
-          <svg class="w-9 h-9 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.966 8.966 0 00-6 2.292m0-14.25v14.25" />
-          </svg>
+        <div class="inline-flex flex-col items-center justify-center mb-4 gap-2">
+          <!-- Logo UAC / ícono institucional -->
+          <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-2xl shadow-indigo-500/40 flex items-center justify-center">
+            <svg class="w-11 h-11 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0118 18a8.966 8.966 0 00-6 2.292m0-14.25v14.25" />
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-2xl font-bold text-white leading-tight">Escuela de Posgrado</h1>
+            <p class="text-slate-400 text-sm mt-0.5">Universidad Andina del Cusco</p>
+          </div>
         </div>
-        <h1 class="text-2xl font-bold text-white">Escuela de Posgrado</h1>
-        <p class="text-slate-400 text-sm mt-1">Universidad Andina del Cusco — Sistema de Gestión</p>
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20">
+          <div class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></div>
+          <span class="text-xs text-indigo-300 font-medium">Sistema de Gestión de Tesis — TesisTrack</span>
+        </div>
       </div>
 
       <!-- Formulario -->
       <div class="card-glass p-8">
         <h2 class="text-lg font-semibold text-white mb-1">Iniciar sesión</h2>
-        <p class="text-slate-400 text-sm mb-6">Selecciona tu usuario para continuar</p>
+        <p class="text-slate-400 text-sm mb-6">Ingresa tus credenciales institucionales</p>
 
-        <!-- Selector de usuario -->
-        <div class="mb-5">
-          <label class="input-label">Tu nombre</label>
-          <div v-if="cargando" class="space-y-2">
-            <div class="h-10 bg-slate-700/50 rounded-lg animate-pulse"></div>
-          </div>
-          <div v-else class="space-y-2 max-h-60 overflow-y-auto pr-1">
+        <!-- Campo Correo -->
+        <div class="mb-4">
+          <label class="input-label">Correo electrónico</label>
+          <input
+            id="input-correo"
+            v-model="form.correo"
+            type="email"
+            class="input-field"
+            placeholder="tu.correo@uandina.edu.pe"
+            autocomplete="email"
+            @keyup.enter="ingresar"
+          />
+        </div>
+
+        <!-- Campo Contraseña -->
+        <div class="mb-6">
+          <label class="input-label">Contraseña</label>
+          <div class="relative">
+            <input
+              id="input-password"
+              v-model="form.password"
+              :type="mostrarPassword ? 'text' : 'password'"
+              class="input-field pr-10"
+              placeholder="••••••••"
+              autocomplete="current-password"
+              @keyup.enter="ingresar"
+            />
             <button
-              v-for="u in usuarios"
-              :key="u.id_usuario"
-              @click="seleccionado = u"
-              :class="[
-                'w-full flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 text-left',
-                seleccionado?.id_usuario === u.id_usuario
-                  ? 'border-indigo-500 bg-indigo-600/20 text-white'
-                  : 'border-slate-700 bg-slate-800/40 text-slate-300 hover:border-slate-500 hover:bg-slate-700/40'
-              ]"
+              type="button"
+              @click="mostrarPassword = !mostrarPassword"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
             >
-              <div :class="[
-                'w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0',
-                seleccionado?.id_usuario === u.id_usuario ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-400'
-              ]">
-                {{ iniciales(u.nombre_completo) }}
-              </div>
-              <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium truncate">{{ u.nombre_completo }}</p>
-                <p class="text-xs text-slate-500">{{ u.rol }}</p>
-              </div>
-              <svg v-if="seleccionado?.id_usuario === u.id_usuario" class="w-4 h-4 text-indigo-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              <svg v-if="mostrarPassword" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+              </svg>
+              <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </button>
           </div>
-          <p v-if="!cargando && usuarios.length === 0" class="text-slate-500 text-sm text-center py-4">
-            No hay usuarios configurados en el sistema.
-          </p>
+          <p class="text-xs text-slate-500 mt-1.5">Si no tienes contraseña asignada aún, deja el campo vacío.</p>
         </div>
 
         <!-- Error -->
@@ -73,8 +88,9 @@
 
         <!-- Botón ingresar -->
         <button
+          id="btn-ingresar"
           @click="ingresar"
-          :disabled="!seleccionado || procesando"
+          :disabled="!puedeIngresar || procesando"
           class="btn-primary w-full justify-center py-3"
         >
           <svg v-if="procesando" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -84,7 +100,7 @@
           <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
           </svg>
-          {{ procesando ? 'Ingresando...' : 'Ingresar al sistema' }}
+          {{ procesando ? 'Verificando...' : 'Ingresar al sistema' }}
         </button>
       </div>
 
@@ -96,7 +112,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import api from '../api.js'
@@ -104,37 +120,37 @@ import api from '../api.js'
 const router = useRouter()
 const auth = useAuthStore()
 
-const usuarios = ref([])
-const seleccionado = ref(null)
-const cargando = ref(true)
+const form = ref({ correo: '', password: '' })
+const mostrarPassword = ref(false)
 const procesando = ref(false)
 const error = ref('')
 
-onMounted(async () => {
-  try {
-    const res = await api.get('/usuarios')
-    usuarios.value = res.data
-  } catch (e) {
-    error.value = 'No se pudo conectar con el servidor. Verifica la conexión.'
-  } finally {
-    cargando.value = false
-  }
-})
-
-function iniciales(nombre) {
-  return nombre.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
-}
+const puedeIngresar = computed(() => form.value.correo.trim().length > 0)
 
 async function ingresar() {
-  if (!seleccionado.value) return
+  if (!puedeIngresar.value || procesando.value) return
   procesando.value = true
   error.value = ''
+
   try {
-    const res = await api.post(`/auth/login?id_usuario=${seleccionado.value.id_usuario}`)
+    const res = await api.post('/auth/login', null, {
+      params: {
+        correo: form.value.correo.trim(),
+        password: form.value.password,
+      }
+    })
     auth.login(res.data)
     router.push('/')
   } catch (e) {
-    error.value = 'No se pudo verificar el usuario. Intenta nuevamente.'
+    const status = e.response?.status
+    const detail = e.response?.data?.detail
+    if (status === 401) {
+      error.value = detail || 'Correo o contraseña incorrectos.'
+    } else if (status === 422) {
+      error.value = 'Por favor ingresa un correo válido.'
+    } else {
+      error.value = 'No se pudo conectar con el servidor. Verifica tu conexión.'
+    }
   } finally {
     procesando.value = false
   }

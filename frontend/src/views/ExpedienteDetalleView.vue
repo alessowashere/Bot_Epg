@@ -121,6 +121,16 @@
         </div>
 
         <div class="space-y-5">
+          <!-- Timeline de Revisiones / Versiones de Observaciones -->
+          <div class="card">
+            <h3 class="text-sm font-semibold text-white mb-4">Revisiones / Versiones de Documento</h3>
+            <TimelineRevisiones
+              v-if="exp"
+              :expediente-ref="route.params.uuid"
+              @actualizado="cargar"
+            />
+          </div>
+
           <div class="card">
             <h3 class="text-sm font-semibold text-white mb-3">Dictaminantes y Asignaciones</h3>
             <div class="space-y-2">
@@ -186,6 +196,7 @@ import { useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import api from '../api.js'
 import StepTimeline from '../components/StepTimeline.vue'
+import TimelineRevisiones from '../components/TimelineRevisiones.vue'
 
 const route = useRoute()
 const auth = useAuthStore()

@@ -12,6 +12,9 @@ from database import SessionLocal
 from generar_sesion import generar_sesion
 from models import TicketAdjunto, TicketOsticket
 
+# Activar integración Drive si se configura la URL
+USAR_DRIVE = bool(os.getenv("DRIVE_APPS_SCRIPT_URL"))
+
 
 URL_BASE = os.getenv("OSTICKET_URL_BASE", "https://mesadepartes.uandina.edu.pe")
 URL_TICKETS_ABIERTOS = os.getenv("OSTICKET_URL_TICKETS", f"{URL_BASE}/scp/tickets.php?queue=1")
@@ -280,6 +283,7 @@ def extraer_detalle_ticket(page, url_detalle: str) -> dict:
 
 
 def descargar_adjuntos(page, db, ticket_data: dict) -> tuple[int, int]:
+    """Descarga adjuntos de osTicket y opcionalmente los sube a Google Drive."""
     enlaces = page.locator(".attachments a.filename")
     total = enlaces.count()
     descargados = 0
@@ -310,6 +314,32 @@ def descargar_adjuntos(page, db, ticket_data: dict) -> tuple[int, int]:
 
             url_archivo = guardar_archivo_local(ruta_temporal, nombre_archivo, ticket_data["numero_visual"])
             if url_archivo:
+                # Intentar subir a Google Drive si está configurado
+                if USAR_DRIVE:
+                    try:
+                        from drive_api import subir_archivo_drive
+                        # Obtener datos del ticket para identificar al alumno
+                        ticket_db = db.query(TicketOsticket).filter(
+                            TicketOsticket.ticket_id == ticket_data["id_interno"]
+                        ).first()
+                        identificador = (
+                            ticket_db.codigo_alumno_osticket
+                            or ticket_db.nombre_estudiante_osticket
+                            or ticket_data["numero_visual"]
+                        ) if ticket_db else ticket_data["numero_visual"]
+
+                        url_drive = subir_archivo_drive(
+                            ruta_local=url_archivo if url_archivo.startswith("/") else ruta_temporal,
+                            nombre_archivo=nombre_archivo,
+                            identificador_alumno=identificador,
+                            borrar_local_si_exito=False,  # Mantener copia local de referencia
+                        )
+                        if url_drive:
+                            url_archivo = url_drive
+                            logger.info("Adjunto subido a Drive: %s → %s", nombre_archivo, url_drive)
+                    except Exception as e:
+                        logger.warning("Error subiendo a Drive (no crítico): %s", e)
+
                 guardar_adjunto_bd(db, ticket_data["id_interno"], nombre_archivo, url_archivo)
                 descargados += 1
         except Exception as e:

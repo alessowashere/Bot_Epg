@@ -27,13 +27,14 @@ class UsuarioSistema(Base):
     correo = Column(String(150), unique=True, nullable=False)
     rol = Column(Enum("Administrador", "Recepcion", "Directora", "Dictaminante"), nullable=False)
     activo = Column(Boolean, default=True)
+    password_hash = Column(String(255), nullable=True)  # NULL = login sin contraseña (modo legacy)
 
 
 class Docente(Base):
     __tablename__ = "docentes"
 
     id_docente = Column(Integer, primary_key=True, autoincrement=True)
-    dni = Column(String(15), unique=True, nullable=False)
+    dni = Column(String(15), unique=True, nullable=True)  # Nullable: docentes auto-creados desde PDF pueden no tener DNI
     nombre_completo = Column(String(150), nullable=False)
     correo = Column(String(150), nullable=True)
     especialidad = Column(String(150))
@@ -67,6 +68,13 @@ class ExpedienteTesis(Base):
         back_populates="expediente",
         cascade="all, delete-orphan",
         order_by="HistorialMovimiento.fecha_movimiento",
+    )
+    tickets = relationship("TicketOsticket", back_populates="expediente", cascade="save-update, merge")
+    revisiones = relationship(
+        "RevisionTesis",
+        back_populates="expediente",
+        cascade="all, delete-orphan",
+        order_by="RevisionTesis.fecha_revision",
     )
 
 
@@ -131,7 +139,7 @@ class TicketOsticket(Base):
     datos_extraidos = Column(JSON, nullable=True)
 
     adjuntos = relationship("TicketAdjunto", back_populates="ticket", cascade="all, delete-orphan")
-    expediente = relationship("ExpedienteTesis", foreign_keys=[id_expediente])
+    expediente = relationship("ExpedienteTesis", foreign_keys=[id_expediente], back_populates="tickets")
 
 
 class TicketAdjunto(Base):
@@ -186,3 +194,30 @@ class HistorialMovimiento(Base):
 
     expediente = relationship("ExpedienteTesis", back_populates="historial")
     paso = relationship("PasoFlujo", foreign_keys=[id_paso])
+
+
+class RevisionTesis(Base):
+    """Control de versiones de documentos de tesis observados."""
+    __tablename__ = "revisiones_tesis"
+
+    id_revision = Column(Integer, primary_key=True, autoincrement=True)
+    id_expediente = Column(Integer, ForeignKey("expedientes_tesis.id_expediente", ondelete="CASCADE"), nullable=False)
+    id_docente = Column(Integer, ForeignKey("docentes.id_docente"), nullable=True)  # Docente que hizo la observación
+    version_documento = Column(Integer, nullable=False, default=1)  # V1, V2, V3...
+    tipo_revision = Column(
+        Enum("Observacion", "Corrección", "Aprobacion"),
+        nullable=False,
+        default="Observacion"
+    )
+    descripcion_observacion = Column(Text, nullable=True)
+    archivo_observado_url = Column(String(500), nullable=True)   # URL del documento con observaciones
+    archivo_corregido_url = Column(String(500), nullable=True)   # URL del documento corregido
+    fecha_revision = Column(DateTime, default=datetime.utcnow)
+    fecha_correccion = Column(DateTime, nullable=True)            # Cuando el alumno entregó corrección
+    estado = Column(
+        Enum("Pendiente", "Corregido", "Aceptado"),
+        default="Pendiente"
+    )
+
+    expediente = relationship("ExpedienteTesis", back_populates="revisiones")
+    docente = relationship("Docente", foreign_keys=[id_docente])

@@ -12,6 +12,14 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 import models
+from auth import (
+    crear_token_acceso,
+    get_current_admin,
+    get_current_user,
+    get_current_directora_o_admin,
+    hashear_password,
+    verificar_password,
+)
 from database import Base, SessionLocal, engine
 from extractor import extraer_datos_cuerpo, extraer_todos_adjuntos, generar_resumen_ticket
 
@@ -373,15 +381,46 @@ def listar_usuarios(db: Session = Depends(get_db)):
 
 
 @app.post("/api/auth/login")
-def login(id_usuario: int, db: Session = Depends(get_db)):
-    usuario = (
-        db.query(models.UsuarioSistema)
-        .filter(models.UsuarioSistema.id_usuario == id_usuario, models.UsuarioSistema.activo == True)
-        .first()
-    )
-    if not usuario:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+def login(
+    correo: str,
+    password: str,
+    # Compatibilidad legacy: si se pasa id_usuario sin password, modo sin contraseña
+    id_usuario: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """Login con correo+contraseña (JWT). Modo legacy por id_usuario si no hay hash."""
+    if id_usuario and not correo:
+        # Modo legacy: buscar por ID sin contraseña (solo si el usuario no tiene hash)
+        usuario = db.query(models.UsuarioSistema).filter(
+            models.UsuarioSistema.id_usuario == id_usuario,
+            models.UsuarioSistema.activo == True,
+        ).first()
+        if not usuario or usuario.password_hash:
+            raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+    else:
+        usuario = db.query(models.UsuarioSistema).filter(
+            models.UsuarioSistema.correo == correo,
+            models.UsuarioSistema.activo == True,
+        ).first()
+        if not usuario:
+            raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+
+        if usuario.password_hash:
+            # Usuario con contraseña configurada — verificar
+            if not verificar_password(password, usuario.password_hash):
+                raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+        else:
+            # Usuario sin contraseña (modo legacy para migración)
+            pass
+
+    token = crear_token_acceso({
+        "sub": str(usuario.id_usuario),
+        "nombre": usuario.nombre_completo,
+        "rol": usuario.rol,
+    })
     return {
+        "access_token": token,
+        "token_type": "bearer",
         "id_usuario": usuario.id_usuario,
         "nombre_completo": usuario.nombre_completo,
         "correo": usuario.correo,
@@ -1060,3 +1099,233 @@ def responder_dictaminante(
     )
     db.commit()
     return {"status": "ok", "respuesta": respuesta}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# EJE 3: Gestión de contraseñas
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.put("/api/usuarios/{id_usuario}/cambiar-password")
+def cambiar_password(
+    id_usuario: int,
+    nueva_password: str,
+    db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_user),
+):
+    """Permite a un usuario cambiar su propia contraseña, o al admin cambiar la de cualquiera."""
+    if current_user.id_usuario != id_usuario and current_user.rol != "Administrador":
+        raise HTTPException(status_code=403, detail="Sin permisos para cambiar esta contraseña")
+    usuario = db.query(models.UsuarioSistema).filter(models.UsuarioSistema.id_usuario == id_usuario).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if len(nueva_password) < 6:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
+    usuario.password_hash = hashear_password(nueva_password)
+    db.commit()
+    return {"status": "ok", "mensaje": "Contraseña actualizada correctamente"}
+
+
+@app.get("/api/auth/me")
+def obtener_perfil(current_user: models.UsuarioSistema = Depends(get_current_user)):
+    """Devuelve el perfil del usuario autenticado por el token JWT."""
+    return {
+        "id_usuario": current_user.id_usuario,
+        "nombre_completo": current_user.nombre_completo,
+        "correo": current_user.correo,
+        "rol": current_user.rol,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# EJE 9: Control de versiones de revisiones de tesis
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/expedientes/{expediente_ref}/revisiones")
+def listar_revisiones(expediente_ref: str, db: Session = Depends(get_db)):
+    """Lista todas las revisiones/versiones de documentos de un expediente."""
+    exp = obtener_expediente_por_ref(db, expediente_ref)
+    revisiones = (
+        db.query(models.RevisionTesis)
+        .filter(models.RevisionTesis.id_expediente == exp.id_expediente)
+        .order_by(models.RevisionTesis.fecha_revision.asc())
+        .all()
+    )
+    return {
+        "total": len(revisiones),
+        "data": [
+            {
+                "id_revision": r.id_revision,
+                "version_documento": r.version_documento,
+                "tipo_revision": r.tipo_revision,
+                "descripcion_observacion": r.descripcion_observacion,
+                "archivo_observado_url": r.archivo_observado_url,
+                "archivo_corregido_url": r.archivo_corregido_url,
+                "fecha_revision": r.fecha_revision.strftime("%Y-%m-%d %H:%M:%S"),
+                "fecha_correccion": r.fecha_correccion.strftime("%Y-%m-%d %H:%M:%S") if r.fecha_correccion else None,
+                "estado": r.estado,
+                "docente": r.docente.nombre_completo if r.docente else None,
+            }
+            for r in revisiones
+        ],
+    }
+
+
+@app.post("/api/expedientes/{expediente_ref}/revisiones")
+def crear_revision(
+    expediente_ref: str,
+    tipo_revision: str = "Observacion",
+    descripcion_observacion: Optional[str] = None,
+    archivo_observado_url: Optional[str] = None,
+    id_docente: Optional[int] = None,
+    usuario_nombre: Optional[str] = "Sistema",
+    db: Session = Depends(get_db),
+):
+    """Registra una nueva observación/revisión de documento en el expediente."""
+    exp = obtener_expediente_por_ref(db, expediente_ref)
+
+    # Calcular la siguiente versión
+    ultima_version = (
+        db.query(models.RevisionTesis)
+        .filter(models.RevisionTesis.id_expediente == exp.id_expediente)
+        .count()
+    )
+
+    revision = models.RevisionTesis(
+        id_expediente=exp.id_expediente,
+        id_docente=id_docente,
+        version_documento=ultima_version + 1,
+        tipo_revision=tipo_revision,
+        descripcion_observacion=descripcion_observacion,
+        archivo_observado_url=archivo_observado_url,
+        estado="Pendiente",
+    )
+    db.add(revision)
+    registrar_movimiento(
+        db,
+        exp,
+        "Observado",
+        f"Revisión V{ultima_version + 1} registrada: {descripcion_observacion or tipo_revision}",
+        usuario_nombre,
+    )
+    db.commit()
+    db.refresh(revision)
+    return {
+        "status": "ok",
+        "id_revision": revision.id_revision,
+        "version_documento": revision.version_documento,
+    }
+
+
+@app.put("/api/revisiones/{id_revision}/corregido")
+def marcar_corregido(
+    id_revision: int,
+    archivo_corregido_url: Optional[str] = None,
+    usuario_nombre: Optional[str] = "Sistema",
+    db: Session = Depends(get_db),
+):
+    """Marca una revisión como corregida, opcionalmente adjuntando el documento corregido."""
+    revision = db.query(models.RevisionTesis).filter(models.RevisionTesis.id_revision == id_revision).first()
+    if not revision:
+        raise HTTPException(status_code=404, detail="Revisión no encontrada")
+    revision.estado = "Corregido"
+    revision.fecha_correccion = datetime.utcnow()
+    if archivo_corregido_url:
+        revision.archivo_corregido_url = archivo_corregido_url
+    db.commit()
+    return {"status": "ok", "id_revision": id_revision, "estado": "Corregido"}
+
+
+@app.put("/api/revisiones/{id_revision}/aceptado")
+def marcar_aceptado(
+    id_revision: int,
+    usuario_nombre: Optional[str] = "Sistema",
+    db: Session = Depends(get_db),
+):
+    """Marca una revisión como aceptada (el docente aprueba la corrección)."""
+    revision = db.query(models.RevisionTesis).filter(models.RevisionTesis.id_revision == id_revision).first()
+    if not revision:
+        raise HTTPException(status_code=404, detail="Revisión no encontrada")
+    revision.estado = "Aceptado"
+    revision.tipo_revision = "Aprobacion"
+    db.commit()
+    return {"status": "ok", "id_revision": id_revision, "estado": "Aceptado"}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# EJE 8: Responder en osTicket via Playwright (inyección headless)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/tickets/{ticket_ref}/responder-osticket")
+def responder_en_osticket(
+    ticket_ref: str,
+    mensaje: str,
+    tipo: str = Query("nota_interna", description="'nota_interna' o 'respuesta_cliente'"),
+    usuario_nombre: Optional[str] = "Sistema",
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Inyecta una nota interna o respuesta al ticket real de osTicket
+    usando Playwright en background. No bloquea la respuesta HTTP.
+    """
+    ticket = obtener_ticket_por_ref(db, ticket_ref)
+    if not ticket.numero_visual:
+        raise HTTPException(status_code=400, detail="El ticket no tiene número visual de osTicket")
+
+    def _inyectar():
+        try:
+            from notificador import notificar_alumno_via_bot
+            notificar_alumno_via_bot(ticket.ticket_id, mensaje)
+        except Exception as e:
+            print(f"[OSTICKET REPLY] Error al inyectar respuesta: {e}")
+
+    if background_tasks:
+        background_tasks.add_task(_inyectar)
+
+    # Registrar en historial local sin bloquear
+    if ticket.id_expediente:
+        exp = db.query(models.ExpedienteTesis).filter(
+            models.ExpedienteTesis.id_expediente == ticket.id_expediente
+        ).first()
+        if exp:
+            registrar_movimiento(
+                db, exp, "Notificado",
+                f"Respuesta enviada a osTicket #{ticket.numero_visual}: {mensaje[:200]}",
+                usuario_nombre
+            )
+            db.commit()
+
+    return {
+        "status": "enviado",
+        "ticket_id": ticket.ticket_id,
+        "numero_visual": ticket.numero_visual,
+        "tipo": tipo,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# EJE 7: Sync Histórico Excel (Fuzzy Matching)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/admin/sync-historico")
+def sync_historico_excel(
+    archivo: UploadFile = File(...),
+    umbral_similaridad: int = Query(85, ge=60, le=100),
+    modo_dry_run: bool = Query(True, description="Si True, solo simula sin modificar la BD"),
+    db: Session = Depends(get_db),
+):
+    """
+    Cruza el Excel histórico con los expedientes en BD usando Fuzzy Matching (Levenshtein).
+    En modo dry_run=True, solo reporta lo que haría sin modificar nada.
+    """
+    try:
+        from sync_historico_excel import sync_excel_con_bd
+        resultado = sync_excel_con_bd(db, archivo.file, umbral_similaridad, modo_dry_run)
+        return resultado
+    except ImportError:
+        raise HTTPException(
+            status_code=501,
+            detail="Módulo sync_historico_excel no disponible. Verifica que thefuzz esté instalado."
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en sync: {str(e)}")

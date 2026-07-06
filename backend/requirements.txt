@@ -1,10 +1,20 @@
 fastapi
-uvicorn
+uvicorn[standard]
 sqlalchemy
 pymysql
 playwright
 python-multipart
 pdfplumber
 python-docx
-python-jose[cryptography]
 openpyxl
+
+# Auth JWT
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Fuzzy matching para sync histórico Excel
+thefuzz
+python-Levenshtein
+
+# HTTP para Drive API
+requests
