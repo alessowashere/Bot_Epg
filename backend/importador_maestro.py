@@ -22,10 +22,10 @@ def importar_docentes(db, excel_path):
     # Normalizar nombres de columnas a minusculas
     df.columns = [str(c).lower().strip() for c in df.columns]
     
-    # Buscar columna de nombre y DNI (por heuristica)
-    col_nombre = next((c for c in df.columns if 'nombre' in c or 'docente' in c or 'apellidos' in c), None)
-    col_dni = next((c for c in df.columns if 'dni' in c or 'documento' in c), None)
-    col_correo = next((c for c in df.columns if 'correo' in c or 'email' in c), None)
+    # Buscar columna de nombre y DNI
+    col_nombre = next((c for c in df.columns if 'apellidos y nombres' in c or 'nombre' in c), None)
+    col_dni = next((c for c in df.columns if 'documento' in c or 'dni' in c), None)
+    col_correo = next((c for c in df.columns if 'correo inst' in c or 'email' in c), None)
     
     if not col_nombre:
         print("Error: No se encontró la columna de Nombres en el Excel.")
