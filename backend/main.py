@@ -284,6 +284,9 @@ def ejecutar_extraccion(db: Session, ticket: models.TicketOsticket):
     caratula = datos_fusionados.get("caratula")
     if caratula:
         codigo = ticket.codigo_alumno_osticket or datos_fusionados.get("codigo_alumno") or caratula.get("alumno_orcid")
+        if codigo:
+            codigo = codigo.split('@')[0][:15]
+        
         exp = None
         if codigo:
             exp = db.query(models.ExpedienteTesis).filter(models.ExpedienteTesis.codigo_alumno == codigo).first()
