@@ -30,6 +30,8 @@ UPDATE asignaciones_tesis
 SET uuid = UUID()
 WHERE uuid IS NULL OR uuid = '';
 
+ALTER TABLE tickets_osticket MODIFY COLUMN estado_scraping VARCHAR(50);
+
 UPDATE tickets_osticket
 SET estado_scraping = CASE estado_scraping
   WHEN 'Nuevo' THEN 'Pendiente_Descarga'
