@@ -33,6 +33,11 @@ def parsear_fecha_osticket(valor: str | None) -> datetime:
         return datetime.utcnow()
 
     texto = " ".join(valor.strip().split())
+    # Normalizar a.m. / p.m. con puntos
+    texto = texto.replace("a.m.", "AM").replace("p.m.", "PM")
+    texto = texto.replace("a. m.", "AM").replace("p. m.", "PM")
+    texto = texto.replace("A.M.", "AM").replace("P.M.", "PM")
+    
     formatos = [
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d %H:%M",

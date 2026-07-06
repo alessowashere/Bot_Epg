@@ -593,6 +593,8 @@ def listar_expedientes(
     estado: Optional[str] = None,
     sub_estado: Optional[str] = None,
     busqueda: Optional[str] = None,
+    fecha_desde: Optional[str] = None,
+    fecha_hasta: Optional[str] = None,
     page: int = Query(1, ge=1),
     per_page: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -613,6 +615,18 @@ def listar_expedientes(
                 models.ExpedienteTesis.titulo_tesis.like(like),
             )
         )
+    if fecha_desde:
+        try:
+            fd = datetime.strptime(fecha_desde, "%Y-%m-%d")
+            query = query.filter(models.ExpedienteTesis.fecha_inicio_tramite >= fd)
+        except ValueError:
+            pass
+    if fecha_hasta:
+        try:
+            fh = datetime.strptime(fecha_hasta, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            query = query.filter(models.ExpedienteTesis.fecha_inicio_tramite <= fh)
+        except ValueError:
+            pass
 
     total, total_pages, expedientes = paginar(query, page, per_page)
     return {
