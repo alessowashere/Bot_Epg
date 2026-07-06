@@ -9,8 +9,8 @@
           </svg>
         </div>
         <div>
-          <h1 class="text-sm font-bold text-white leading-tight">EPG-UAC</h1>
-          <p class="text-xs text-slate-500">Sistema de Posgrado</p>
+          <h1 class="text-sm font-bold text-white leading-tight">TesisTrack 7</h1>
+          <p class="text-xs text-slate-500">Posgrado UAC</p>
         </div>
       </div>
     </div>
