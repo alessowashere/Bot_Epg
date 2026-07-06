@@ -199,15 +199,28 @@ def listar_tickets_todas_paginas(page) -> list[dict]:
     pagina = 1
 
     while True:
+        url_paginada = f"{URL_TICKETS_ABIERTOS}&p={pagina}"
+        logger.info("Navegando a la pagina %s: %s", pagina, url_paginada)
         try:
-            page.wait_for_selector("table.list.queue.tickets tbody tr", timeout=15000)
+            page.goto(url_paginada)
+            page.wait_for_load_state("networkidle")
+        except Exception as e:
+            logger.error("Error cargando pagina %s: %s", pagina, e)
+            break
+
+        try:
+            page.wait_for_selector("table.list.queue.tickets tbody tr", timeout=8000)
         except PlaywrightTimeoutError:
-            logger.warning("No se encontro tabla de tickets en pagina %s", pagina)
+            logger.warning("No se encontro tabla de tickets en pagina %s (Fin de la cola)", pagina)
             break
 
         filas = page.query_selector_all("table.list.queue.tickets tbody tr")
         logger.info("Pagina %s: %s filas detectadas", pagina, len(filas))
 
+        if not filas or len(filas) == 0:
+            break
+
+        nuevos_en_esta_pagina = 0
         for fila in filas:
             try:
                 enlace = fila.query_selector("a.preview")
@@ -231,24 +244,14 @@ def listar_tickets_todas_paginas(page) -> list[dict]:
                     }
                 )
                 vistos.add(id_interno)
+                nuevos_en_esta_pagina += 1
             except Exception as e:
                 logger.warning("Error leyendo fila de ticket: %s", e)
 
-        siguiente = page.query_selector("a.next")
-        if not siguiente:
+        if nuevos_en_esta_pagina == 0:
+            logger.info("No se encontraron mas tickets nuevos en la pagina %s. Parando paginacion.", pagina)
             break
 
-        clases = siguiente.get_attribute("class") or ""
-        aria_disabled = siguiente.get_attribute("aria-disabled")
-        if "disabled" in clases.lower() or aria_disabled == "true":
-            break
-
-        href_sig = siguiente.get_attribute("href")
-        if href_sig:
-            page.goto(urljoin(URL_BASE, href_sig))
-        else:
-            siguiente.click()
-        page.wait_for_load_state("networkidle")
         pagina += 1
 
     return tickets

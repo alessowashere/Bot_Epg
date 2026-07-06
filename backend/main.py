@@ -271,6 +271,71 @@ def ejecutar_extraccion(db: Session, ticket: models.TicketOsticket):
         ],
         "fecha_extraccion": datetime.utcnow().isoformat(),
     }
+    
+    # Intentar clasificar y actualizar BD usando la carátula extraída
+    caratula = datos_fusionados.get("caratula")
+    if caratula:
+        codigo = ticket.codigo_alumno_osticket or datos_fusionados.get("codigo_alumno") or caratula.get("alumno_orcid")
+        exp = None
+        if codigo:
+            exp = db.query(models.ExpedienteTesis).filter(models.ExpedienteTesis.codigo_alumno == codigo).first()
+        elif caratula.get("nombre_alumno"):
+            exp = db.query(models.ExpedienteTesis).filter(models.ExpedienteTesis.nombre_alumno == caratula["nombre_alumno"]).first()
+            
+        if not exp and codigo:
+            exp = models.ExpedienteTesis(
+                codigo_alumno=codigo,
+                nombre_alumno=caratula.get("nombre_alumno") or ticket.nombre_estudiante_osticket or "Desconocido",
+                grado_postula=caratula.get("grado_postula") or "Maestro",
+                titulo_tesis=caratula.get("titulo_tesis"),
+                id_paso_actual=1,
+                estado_expediente="En Proceso",
+            )
+            db.add(exp)
+            db.flush()
+            registrar_movimiento(db, exp, "Creado", "Expediente creado automáticamente por extracción de PDF", "Sistema (IA)")
+        elif exp:
+            if caratula.get("titulo_tesis"):
+                exp.titulo_tesis = caratula["titulo_tesis"]
+            if caratula.get("nombre_alumno"):
+                exp.nombre_alumno = caratula["nombre_alumno"]
+            if caratula.get("grado_postula"):
+                exp.grado_postula = caratula["grado_postula"]
+            db.flush()
+            
+        if exp:
+            ticket.id_expediente = exp.id_expediente
+            ticket.estado_scraping = "Clasificado"
+            
+            nombre_asesor = caratula.get("nombre_asesor")
+            if nombre_asesor:
+                docente = db.query(models.Docente).filter(models.Docente.nombre_completo == nombre_asesor).first()
+                if not docente:
+                    docente = models.Docente(
+                        nombre_completo=nombre_asesor,
+                        correo=None,
+                        estado="Activo",
+                        max_tesis_permitidas=5
+                    )
+                    db.add(docente)
+                    db.flush()
+                
+                existe_asig = db.query(models.AsignacionTesis).filter(
+                    models.AsignacionTesis.id_expediente == exp.id_expediente,
+                    models.AsignacionTesis.id_docente == docente.id_docente,
+                    models.AsignacionTesis.rol_asignado == "Asesor"
+                ).first()
+                
+                if not existe_asig:
+                    asig = models.AsignacionTesis(
+                        id_expediente=exp.id_expediente,
+                        id_docente=docente.id_docente,
+                        rol_asignado="Asesor",
+                        estado_asignacion="Activo",
+                    )
+                    db.add(asig)
+                    db.flush()
+
     if ticket.estado_scraping not in ("Clasificado", "Notificado"):
         ticket.estado_scraping = "Datos_Extraidos"
     db.commit()

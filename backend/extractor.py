@@ -116,6 +116,104 @@ def extraer_datos_cuerpo(cuerpo: str) -> dict:
     return datos
 
 
+def analizar_caratula(texto: str) -> dict:
+    if not texto:
+        return {}
+
+    # Limpiar retornos de carro raros
+    texto_limpio = texto.replace("\r", "")
+    
+    # 1. Intentar detectar título de tesis
+    titulo = ""
+    idx_presentado = -1
+    for keyword in ["presentado por", "presentado por:", "por:", "presentada por"]:
+        idx = texto_limpio.lower().find(keyword)
+        if idx != -1:
+            idx_presentado = idx
+            break
+            
+    if idx_presentado != -1:
+        titulo_raw = texto_limpio[:idx_presentado].strip()
+        lineas_titulo = [l.strip() for l in titulo_raw.split("\n") if l.strip()]
+        lineas_filtradas = []
+        for l in lineas_titulo:
+            l_norm = l.lower()
+            if any(k in l_norm for k in ["universidad", "escuela", "posgrado", "facultad", "filial", "acreditada", "tesis"]):
+                continue
+            lineas_filtradas.append(l)
+        titulo = " ".join(lineas_filtradas).strip('"').strip('“').strip('”').strip()
+
+    # 2. Intentar detectar Alumno (Tesista)
+    alumno = ""
+    if idx_presentado != -1:
+        bloque_alumno = texto_limpio[idx_presentado:]
+        idx_fin_alumno = len(bloque_alumno)
+        for stop_keyword in ["orcid", "para optar", "asesor"]:
+            idx_stop = bloque_alumno.lower().find(stop_keyword)
+            if idx_stop != -1 and idx_stop < idx_fin_alumno:
+                idx_fin_alumno = idx_stop
+        
+        alumno_raw = bloque_alumno[:idx_fin_alumno]
+        for intro in ["presentado por:", "presentado por", "por:", "presentada por"]:
+            if alumno_raw.lower().startswith(intro):
+                alumno_raw = alumno_raw[len(intro):].strip()
+        lineas_alu = [l.strip() for l in alumno_raw.split("\n") if l.strip()]
+        if lineas_alu:
+            n_alu = lineas_alu[0]
+            n_alu = re.sub(r"^(br\.|bach\.|bachiller|lic\.|ing\.)\s*", "", n_alu, flags=re.IGNORECASE).strip()
+            alumno = n_alu
+
+    # 3. Intentar detectar Grado
+    grado = None
+    match_grado = re.search(r"grado\s+academico\s+de\s+(maestro|doctor|magister)\b", texto_limpio, re.IGNORECASE)
+    if match_grado:
+        tipo = match_grado.group(1).lower()
+        if tipo in ["maestro", "magister"]:
+            grado = "Maestro"
+        elif tipo == "doctor":
+            grado = "Doctor"
+
+    # 4. Intentar detectar Asesor
+    asesor = ""
+    idx_asesor = texto_limpio.lower().find("asesor:")
+    if idx_asesor == -1:
+        idx_asesor = texto_limpio.lower().find("asesor")
+        
+    if idx_asesor != -1:
+        bloque_asesor = texto_limpio[idx_asesor:]
+        idx_fin_asesor = len(bloque_asesor)
+        for stop_keyword in ["orcid", "cusco", "peru", "202"]:
+            idx_stop = bloque_asesor.lower().find(stop_keyword)
+            if idx_stop != -1 and idx_stop < idx_fin_asesor:
+                idx_fin_asesor = idx_stop
+                
+        asesor_raw = bloque_asesor[:idx_fin_asesor]
+        if asesor_raw.lower().startswith("asesor:"):
+            asesor_raw = asesor_raw[len("asesor:"):].strip()
+        elif asesor_raw.lower().startswith("asesor"):
+            asesor_raw = asesor_raw[len("asesor"):].strip()
+            
+        lineas_ase = [l.strip() for l in asesor_raw.split("\n") if l.strip()]
+        if lineas_ase:
+            n_ase = lineas_ase[0]
+            n_ase = re.sub(r"^(dr\.|dra\.|mg\.|mgt\.|mag\.)\s*", "", n_ase, flags=re.IGNORECASE).strip()
+            asesor = n_ase
+
+    # 5. ORCIDs
+    orcids = re.findall(r"https?://orcid\.org/\d{4}-\d{4}-\d{4}-\d{3}[\dX]", texto_limpio, re.IGNORECASE)
+    alumno_orcid = orcids[0] if len(orcids) >= 1 else None
+    asesor_orcid = orcids[1] if len(orcids) >= 2 else None
+
+    return {
+        "titulo_tesis": titulo,
+        "nombre_alumno": alumno,
+        "grado_postula": grado,
+        "nombre_asesor": asesor,
+        "alumno_orcid": alumno_orcid,
+        "asesor_orcid": asesor_orcid
+    }
+
+
 def generar_resumen_ticket(asunto: str, cuerpo: str, textos_adjuntos) -> dict:
     if isinstance(textos_adjuntos, list):
         texto_adjuntos = "\n\n".join(textos_adjuntos)
@@ -250,6 +348,11 @@ def extraer_todos_adjuntos(adjuntos: list) -> dict:
         if texto:
             texto_combinado_partes.append(f"=== {nombre} ===\n{texto}")
             procesados += 1
+
+            if ext == ".pdf":
+                datos_caratula = analizar_caratula(texto)
+                if datos_caratula and datos_caratula.get("nombre_alumno"):
+                    datos_arch["caratula"] = datos_caratula
 
             for key, value in datos_arch.items():
                 if key not in datos_extraidos_pdfs:
