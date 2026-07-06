@@ -349,7 +349,7 @@ def extraer_todos_adjuntos(adjuntos: list) -> dict:
             texto_combinado_partes.append(f"=== {nombre} ===\n{texto}")
             procesados += 1
 
-            if ext == ".pdf":
+            if nombre.lower().endswith(".pdf"):
                 datos_caratula = analizar_caratula(texto)
                 if datos_caratula and datos_caratula.get("nombre_alumno"):
                     datos_arch["caratula"] = datos_caratula
