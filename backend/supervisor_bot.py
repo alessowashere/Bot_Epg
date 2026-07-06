@@ -10,8 +10,9 @@ logger = logging.getLogger("SupervisorBot")
 def ejecutar_ciclo():
     logger.info("Iniciando ciclo de scraping...")
     backend_dir = Path(__file__).resolve().parent
+    import sys
     resultado = subprocess.run(
-        ["python3", "sincronizador.py"],
+        [sys.executable, "sincronizador.py"],
         cwd=str(backend_dir),
         capture_output=True,
         text=True,
