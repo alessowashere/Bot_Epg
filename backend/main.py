@@ -320,8 +320,10 @@ def ejecutar_extraccion(db: Session, ticket: models.TicketOsticket):
                 docente = db.query(models.Docente).filter(models.Docente.nombre_completo == nombre_asesor).first()
                 if not docente:
                     docente = models.Docente(
+                        dni=f"PENDIENTE-{uuid_lib.uuid4().hex[:6].upper()}",
                         nombre_completo=nombre_asesor,
                         correo=None,
+                        tipo_contrato="Semestral",
                         estado="Activo",
                         max_tesis_permitidas=5
                     )
