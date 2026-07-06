@@ -33,10 +33,23 @@ def importar_docentes(db, excel_path):
 
     nuevos = 0
     actualizados = 0
+    dnis_vistos = set()
 
     for idx, row in df.iterrows():
         nombre = normalizar_texto(row[col_nombre])
         if not nombre: continue
+        
+        dni = normalizar_texto(row[col_dni]) if col_dni else None
+        
+        # Omitir filas que son encabezados repetidos
+        if dni == "NRO.DOCUMENTO" or nombre == "APELLIDOS Y NOMBRES":
+            continue
+            
+        # Omitir duplicados en el mismo archivo
+        if dni and dni in dnis_vistos:
+            continue
+        if dni:
+            dnis_vistos.add(dni)
         
         # Limpiar prefijos como Mag., Dr., Dra., etc.
         nombre_limpio = re.sub(r'^(dr\.|dra\.|mag\.|mg\.|mgt\.|lic\.|ing\.)\s*', '', nombre, flags=re.IGNORECASE).strip().upper()
