@@ -79,7 +79,7 @@ def vaciar_tablas(db):
         db.query(models.HistorialMovimiento).delete()
         db.query(models.AsignacionTesis).delete()
         db.query(models.ResolucionFirma).delete()
-        db.query(models.TicketOsticket).update({"id_expediente": None, "estado_scraping": "Pendiente"})
+        db.query(models.TicketOsticket).update({"id_expediente": None, "estado_scraping": "Pendiente_Descarga"})
         db.query(models.ExpedienteTesis).delete()
         db.query(models.Docente).filter(models.Docente.dni.like("PEN-%")).delete()
         db.commit()
