@@ -28,11 +28,11 @@ PATRON_NOMBRE_FIRMA = re.compile(
 )
 
 PATRONES_PASO = [
-    (1, "Nombramiento de Asesor", [r"nombramiento\s+de\s+asesor", r"designacion\s+de\s+asesor", r"asesor\s+de\s+tesis"]),
-    (2, "Dictamen de Proyecto", [r"dictamen.*proyecto", r"dictaminante.*proyecto", r"revision.*proyecto"]),
-    (3, "Inscripcion del Proyecto", [r"inscripcion.*proyecto", r"inscribir.*proyecto", r"registro.*proyecto"]),
-    (4, "Declarado Apto", [r"declarado\s+apto", r"apto\s+para"]),
-    (5, "Dictamen de Tesis", [r"dictamen.*tesis", r"tesis\s+final", r"informe\s+del\s+asesor.*tesis"]),
+    (1, "Nombramiento de Asesor", [r"nombramiento\s+de\s+asesor", r"designacion\s+de\s+asesor", r"asesor\s+de\s+tesis", r"solicito\s+asesor"]),
+    (2, "Dictamen de Proyecto", [r"dictamen.*proyecto", r"dictaminante.*proyecto", r"revision.*proyecto", r"solicito\s+dictamen"]),
+    (3, "Inscripcion del Proyecto", [r"inscripcion.*proyecto", r"inscribir.*proyecto", r"registro.*proyecto", r"aproba.*proyecto"]),
+    (4, "Declarado Apto", [r"declarado\s+apto", r"apto\s+para", r"aptitud"]),
+    (5, "Dictamen de Tesis", [r"dictamen.*tesis", r"tesis\s+final", r"informe\s+del\s+asesor.*tesis", r"borrador.*tesis", r"dictamen.*borrador"]),
     (6, "Sustentacion", [r"sustentacion", r"fecha.*sustentacion", r"turnitin", r"informe\s+final"]),
     (7, "Tramite del Diploma", [r"diploma", r"grado\s+academico", r"graduad"]),
 ]
