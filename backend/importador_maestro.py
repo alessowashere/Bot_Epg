@@ -117,8 +117,11 @@ def extraer_alumnos_de_excel(ruta_excel, tipo_excel="tramites"):
                 
                 for _, row in df.iterrows():
                     codigo = str(row[col_cod]).strip().upper()
-                    if codigo == "NAN" or codigo == "CODIGO" or "CODIGO" in codigo: continue
+                    if codigo == "NAN" or "CODIGO" in codigo: continue
                     codigo = codigo.split("@")[0].strip() # Quitar el dominio si es correo
+                    
+                    # Cortafuegos: Un código real de la universidad no tiene espacios ni es una oración
+                    if len(codigo) > 20 or len(codigo) < 4 or " " in codigo: continue
                     
                     nombre = normalizar_texto(row[col_nom])
                     if not nombre or nombre == "NAN" or nombre == "NOMBRE": continue
