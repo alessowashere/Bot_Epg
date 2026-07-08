@@ -146,14 +146,6 @@ const menuItems = computed(() => {
     })
   }
 
-  if (auth.rol === 'Dictaminante' || auth.isAdmin) {
-    items.push({
-      to: '/dictaminante',
-      label: 'Dictaminante',
-      icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.75a3 3 0 100 6 3 3 0 000-6zM4.5 19.5a7.5 7.5 0 0115 0" /></svg>`
-    })
-  }
-
   return items
 })
 

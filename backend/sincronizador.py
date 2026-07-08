@@ -270,12 +270,16 @@ def extraer_detalle_ticket(page, url_detalle: str) -> dict:
     page.wait_for_load_state("domcontentloaded")
 
     hilos = page.locator(".thread-body").all_inner_texts()
-    cuerpo = "\n\n".join(h.strip() for h in hilos if h.strip())
+    cuerpo = "\n\n--- hilo osTicket ---\n\n".join(h.strip() for h in hilos if h.strip())
+    email = texto_selector(page, "span[id^='user-'][id$='-email']")
+    codigo = texto_selector(page, "#field_44")
+    if not codigo and email and "@uandina.edu.pe" in email.lower():
+        codigo = email.split("@", 1)[0]
 
     return {
         "nombre": texto_selector(page, "span[id^='user-'][id$='-name']"),
-        "email": texto_selector(page, "span[id^='user-'][id$='-email']"),
-        "codigo": texto_selector(page, "#field_44"),
+        "email": email,
+        "codigo": codigo.upper() if codigo else None,
         "filial_escuela": texto_selector(page, "#field_45"),
         "fecha_creacion": extraer_fecha_detalle(page),
         "cuerpo": cuerpo,

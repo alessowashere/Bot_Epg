@@ -41,7 +41,7 @@
             v-for="paso in distribucion"
             :key="paso.id_paso"
             class="flex items-center gap-3 group cursor-pointer"
-            @click="$router.push(`/expedientes?paso=${paso.id_paso}`)"
+            @click="$router.push(`/expedientes?id_paso=${paso.id_paso}`)"
           >
             <!-- Número del paso -->
             <div class="w-7 h-7 rounded-full bg-slate-700 group-hover:bg-indigo-600 text-slate-400 group-hover:text-white flex items-center justify-center text-xs font-bold transition-all duration-200 flex-shrink-0">

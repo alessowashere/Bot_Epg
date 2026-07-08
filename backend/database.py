@@ -1,9 +1,32 @@
+import os
+from pathlib import Path
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# Credenciales de MariaDB para el esquema del bot
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://admin:Redlabel%40@localhost/bot_epg"
+
+def leer_env_local(clave: str) -> str | None:
+    env_path = Path(__file__).resolve().parent / ".env"
+    if not env_path.exists():
+        return None
+    for linea in env_path.read_text().splitlines():
+        if not linea or linea.lstrip().startswith("#") or "=" not in linea:
+            continue
+        nombre, valor = linea.split("=", 1)
+        if nombre.strip() == clave:
+            return valor.strip().strip('"').strip("'")
+    return None
+
+
+SQLALCHEMY_DATABASE_URL = (
+    os.getenv("DB_URL")
+    or os.getenv("SQLALCHEMY_DATABASE_URL")
+    or leer_env_local("DB_URL")
+    or leer_env_local("SQLALCHEMY_DATABASE_URL")
+)
+if not SQLALCHEMY_DATABASE_URL:
+    raise RuntimeError("Configura DB_URL en backend/.env o en el EnvironmentFile de systemd")
 
 # pool_recycle=3600 evita que MariaDB cierre la conexión por inactividad
 engine = create_engine(

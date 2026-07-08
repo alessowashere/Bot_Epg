@@ -166,6 +166,34 @@ class ResolucionFirma(Base):
     fecha_firma = Column(DateTime, nullable=True)
 
 
+class ResolucionDocumento(Base):
+    """Staging de resoluciones PDF antes de crear/actualizar expedientes."""
+    __tablename__ = "resoluciones_documentos"
+
+    id_documento = Column(Integer, primary_key=True, autoincrement=True)
+    source_hash = Column(String(64), unique=True, nullable=False, index=True)
+    source_path = Column(String(500), nullable=False)
+    archivo_normalizado = Column(String(255), nullable=True)
+    resolucion_numero = Column(String(30), nullable=True)
+    resolucion_anio = Column(Integer, nullable=True)
+    fecha_resolucion = Column(DateTime, nullable=True)
+    expediente_admin = Column(String(30), nullable=True)
+    codigo_alumno = Column(String(30), nullable=True)
+    nombre_alumno = Column(String(200), nullable=True)
+    grado_postula = Column(Enum("Maestro", "Doctor"), nullable=True)
+    programa = Column(String(250), nullable=True)
+    titulo_tesis = Column(Text, nullable=True)
+    tipo_resolucion = Column(String(120), nullable=True)
+    id_paso_inferido = Column(Integer, ForeignKey("cat_pasos_flujo.id_paso"), nullable=True)
+    docentes_detectados = Column(JSON, nullable=True)
+    texto_preview = Column(Text, nullable=True)
+    estado_revision = Column(Enum("Pendiente", "OK", "Observado", "Importado"), default="Pendiente")
+    observaciones = Column(Text, nullable=True)
+    fecha_extraccion = Column(DateTime, default=datetime.utcnow)
+
+    paso_inferido = relationship("PasoFlujo", foreign_keys=[id_paso_inferido])
+
+
 class HistorialMovimiento(Base):
     __tablename__ = "historial_movimientos"
 

@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://dataepis.uandina.pe:49267/bot-posgrado/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://dataepis.uandina.pe/bot-posgrado/api',
   timeout: 60000,
 })
 

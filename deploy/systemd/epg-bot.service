@@ -7,7 +7,7 @@ After=network-online.target mariadb.service
 Type=oneshot
 WorkingDirectory=/opt/sistema_posgrado/backend
 EnvironmentFile=-/opt/sistema_posgrado/backend/.env
-ExecStart=/usr/bin/python3 /opt/sistema_posgrado/backend/supervisor_bot.py
+ExecStart=/opt/sistema_posgrado/backend/venv/bin/python /opt/sistema_posgrado/backend/supervisor_bot.py
 User=www-data
 Group=www-data
 

@@ -5,15 +5,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
+from fastapi import BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 import models
 from auth import (
     crear_token_acceso,
+    decodificar_token,
     get_current_admin,
     get_current_user,
     get_current_directora_o_admin,
@@ -40,6 +42,44 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+PUBLIC_API_PREFIXES = ("/api/auth/login", "/api/dictaminante/")
+PUBLIC_PATHS = {"/", "/docs", "/redoc", "/openapi.json"}
+
+
+@app.middleware("http")
+async def exigir_jwt_en_api(request: Request, call_next):
+    path = request.url.path
+    if request.method == "OPTIONS" or path in PUBLIC_PATHS or path.startswith(PUBLIC_API_PREFIXES):
+        return await call_next(request)
+    if not path.startswith("/api/"):
+        return await call_next(request)
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"detail": "Token Bearer requerido"})
+
+    token = auth_header.removeprefix("Bearer ").strip()
+    try:
+        payload = decodificar_token(token)
+        id_usuario = int(payload.get("sub"))
+    except (HTTPException, TypeError, ValueError) as exc:
+        detail = exc.detail if isinstance(exc, HTTPException) else "Token inválido"
+        return JSONResponse(status_code=401, content={"detail": detail})
+
+    db = SessionLocal()
+    try:
+        usuario = db.query(models.UsuarioSistema).filter(
+            models.UsuarioSistema.id_usuario == id_usuario,
+            models.UsuarioSistema.activo == True,
+        ).first()
+        if not usuario:
+            return JSONResponse(status_code=401, content={"detail": "Usuario no encontrado o inactivo"})
+    finally:
+        db.close()
+
+    return await call_next(request)
 
 
 def get_db():
@@ -280,7 +320,7 @@ def ejecutar_extraccion(db: Session, ticket: models.TicketOsticket):
         "fecha_extraccion": datetime.utcnow().isoformat(),
     }
     
-    # Intentar clasificar y actualizar BD usando la carátula extraída
+    # Vincular contra expedientes/docentes ya cargados por Excel. No crear registros desde PDF.
     caratula = datos_fusionados.get("caratula")
     if caratula:
         codigo = ticket.codigo_alumno_osticket or datos_fusionados.get("codigo_alumno") or caratula.get("alumno_orcid")
@@ -293,19 +333,7 @@ def ejecutar_extraccion(db: Session, ticket: models.TicketOsticket):
         elif caratula.get("nombre_alumno"):
             exp = db.query(models.ExpedienteTesis).filter(models.ExpedienteTesis.nombre_alumno == caratula["nombre_alumno"]).first()
             
-        if not exp and codigo:
-            exp = models.ExpedienteTesis(
-                codigo_alumno=codigo,
-                nombre_alumno=caratula.get("nombre_alumno") or ticket.nombre_estudiante_osticket or "Desconocido",
-                grado_postula=caratula.get("grado_postula") or "Maestro",
-                titulo_tesis=caratula.get("titulo_tesis"),
-                id_paso_actual=1,
-                estado_expediente="En Proceso",
-            )
-            db.add(exp)
-            db.flush()
-            registrar_movimiento(db, exp, "Creado", "Expediente creado automáticamente por extracción de PDF", "Sistema (IA)")
-        elif exp:
+        if exp:
             if caratula.get("titulo_tesis"):
                 exp.titulo_tesis = caratula["titulo_tesis"]
             if caratula.get("nombre_alumno"):
@@ -321,33 +349,22 @@ def ejecutar_extraccion(db: Session, ticket: models.TicketOsticket):
             nombre_asesor = caratula.get("nombre_asesor")
             if nombre_asesor:
                 docente = db.query(models.Docente).filter(models.Docente.nombre_completo == nombre_asesor).first()
-                if not docente:
-                    docente = models.Docente(
-                        dni=f"PEN-{uuid_lib.uuid4().hex[:6].upper()}",
-                        nombre_completo=nombre_asesor,
-                        correo=None,
-                        tipo_contrato="Semestral",
-                        estado="Activo",
-                        max_tesis_permitidas=5
-                    )
-                    db.add(docente)
-                    db.flush()
-                
-                existe_asig = db.query(models.AsignacionTesis).filter(
-                    models.AsignacionTesis.id_expediente == exp.id_expediente,
-                    models.AsignacionTesis.id_docente == docente.id_docente,
-                    models.AsignacionTesis.rol_asignado == "Asesor"
-                ).first()
-                
-                if not existe_asig:
-                    asig = models.AsignacionTesis(
-                        id_expediente=exp.id_expediente,
-                        id_docente=docente.id_docente,
-                        rol_asignado="Asesor",
-                        estado_asignacion="Activo",
-                    )
-                    db.add(asig)
-                    db.flush()
+                if docente:
+                    existe_asig = db.query(models.AsignacionTesis).filter(
+                        models.AsignacionTesis.id_expediente == exp.id_expediente,
+                        models.AsignacionTesis.id_docente == docente.id_docente,
+                        models.AsignacionTesis.rol_asignado == "Asesor"
+                    ).first()
+
+                    if not existe_asig:
+                        asig = models.AsignacionTesis(
+                            id_expediente=exp.id_expediente,
+                            id_docente=docente.id_docente,
+                            rol_asignado="Asesor",
+                            estado_asignacion="Activo",
+                        )
+                        db.add(asig)
+                        db.flush()
 
     if ticket.estado_scraping not in ("Clasificado", "Notificado"):
         ticket.estado_scraping = "Datos_Extraidos"
@@ -434,7 +451,13 @@ def login(
 
 
 @app.post("/api/usuarios")
-def crear_usuario(nombre_completo: str, correo: str, rol: str, db: Session = Depends(get_db)):
+def crear_usuario(
+    nombre_completo: str,
+    correo: str,
+    rol: str,
+    db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_admin),
+):
     usuario = models.UsuarioSistema(nombre_completo=nombre_completo, correo=correo, rol=rol)
     db.add(usuario)
     db.commit()
@@ -450,6 +473,7 @@ def actualizar_usuario(
     rol: str,
     activo: bool = True,
     db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_admin),
 ):
     usuario = db.query(models.UsuarioSistema).filter(models.UsuarioSistema.id_usuario == id_usuario).first()
     if not usuario:
@@ -463,7 +487,11 @@ def actualizar_usuario(
 
 
 @app.delete("/api/usuarios/{id_usuario}")
-def eliminar_usuario(id_usuario: int, db: Session = Depends(get_db)):
+def eliminar_usuario(
+    id_usuario: int,
+    db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_admin),
+):
     usuario = db.query(models.UsuarioSistema).filter(models.UsuarioSistema.id_usuario == id_usuario).first()
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -742,6 +770,7 @@ def derivar_directora(
     nota: Optional[str] = None,
     usuario_nombre: Optional[str] = "Sistema",
     db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_directora_o_admin),
 ):
     exp = obtener_expediente_por_ref(db, expediente_ref)
     exp.sub_estado = "Derivado_Directora"
@@ -758,7 +787,7 @@ def guardar_upload_resolucion(exp, archivo: UploadFile) -> str:
     destino = carpeta / archivo.filename
     with destino.open("wb") as f:
         f.write(archivo.file.read())
-    public_base = os.getenv("EPG_UPLOADS_PUBLIC_URL", "https://dataepis.uandina.pe:49267/expedientes")
+    public_base = os.getenv("EPG_UPLOADS_PUBLIC_URL", "https://dataepis.uandina.pe/expedientes")
     return f"{public_base}/{exp.uuid}/resoluciones/{archivo.filename}"
 
 
@@ -770,6 +799,7 @@ def cargar_resolucion_directa(
     usuario_nombre: Optional[str] = "Sistema",
     archivo: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_directora_o_admin),
 ):
     exp = obtener_expediente_por_ref(db, expediente_ref)
     url = archivo_url
@@ -883,7 +913,10 @@ def notificar_expediente(
 
 
 @app.get("/api/directora/pendientes")
-def listar_pendientes_directora(db: Session = Depends(get_db)):
+def listar_pendientes_directora(
+    db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_directora_o_admin),
+):
     expedientes = (
         db.query(models.ExpedienteTesis)
         .filter(models.ExpedienteTesis.sub_estado.in_(["Derivado_Directora", "Pendiente_Dictaminantes", "Pendiente_Firma"]))
@@ -894,7 +927,11 @@ def listar_pendientes_directora(db: Session = Depends(get_db)):
 
 
 @app.post("/api/resoluciones/{id_resolucion}/aprobar")
-def aprobar_resolucion(id_resolucion: int, db: Session = Depends(get_db)):
+def aprobar_resolucion(
+    id_resolucion: int,
+    db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_directora_o_admin),
+):
     resolucion = db.query(models.ResolucionFirma).filter(models.ResolucionFirma.id_resolucion == id_resolucion).first()
     if not resolucion:
         raise HTTPException(status_code=404, detail="Resolucion no encontrada")
@@ -998,6 +1035,7 @@ def crear_docente(
     tipo_contrato: str = "Indeterminado",
     max_tesis: int = 5,
     db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_admin),
 ):
     docente = models.Docente(
         dni=dni,
@@ -1023,6 +1061,7 @@ def actualizar_docente(
     estado: str = "Activo",
     max_tesis: int = 5,
     db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_admin),
 ):
     docente = db.query(models.Docente).filter(models.Docente.id_docente == id_docente).first()
     if not docente:
@@ -1048,6 +1087,7 @@ def importar_excel(
     archivo: UploadFile = File(...),
     usuario_nombre: Optional[str] = "Sistema",
     db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_admin),
 ):
     from importador_excel import importar_excel_expedientes
 
@@ -1318,6 +1358,7 @@ def sync_historico_excel(
     umbral_similaridad: int = Query(85, ge=60, le=100),
     modo_dry_run: bool = Query(True, description="Si True, solo simula sin modificar la BD"),
     db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_admin),
 ):
     """
     Cruza el Excel histórico con los expedientes en BD usando Fuzzy Matching (Levenshtein).

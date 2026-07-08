@@ -33,6 +33,8 @@ build/
 uploads/
 temp_adjuntos/
 backend/temp_adjuntos/
+*.zip
+data/resoluciones_2026_muestra/
 
 # ── Logs ─────────────────────────────────────
 *.log

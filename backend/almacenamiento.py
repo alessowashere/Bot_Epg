@@ -5,7 +5,7 @@ import urllib.parse
 # --- CONFIGURACIÓN ---
 DIR_BASE_UPLOADS = "/opt/sistema_posgrado/uploads/expedientes"
 # La URL de tu Nginx
-URL_BASE_PUNTO_ACCESO = "https://dataepis.uandina.pe:49267/expedientes"
+URL_BASE_PUNTO_ACCESO = os.getenv("EPG_UPLOADS_PUBLIC_URL", "https://dataepis.uandina.pe/expedientes")
 
 def guardar_archivo_local(ruta_temporal, nombre_archivo, identificador_alumno):
     """Mueve el archivo temporal a la bóveda final y devuelve la URL pública."""

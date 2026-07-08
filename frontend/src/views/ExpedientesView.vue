@@ -122,7 +122,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '../api.js'
 
@@ -138,7 +138,7 @@ const totalPaginas = ref(1)
 
 const filtros = ref({
   busqueda: '',
-  id_paso: route.query.paso ? Number(route.query.paso) : '',
+  id_paso: route.query.id_paso ? Number(route.query.id_paso) : (route.query.paso ? Number(route.query.paso) : ''),
   estado: route.query.estado || ''
 })
 
@@ -194,5 +194,12 @@ function limpiar() {
 onMounted(async () => {
   const [_, pasosRes] = await Promise.all([cargar(), api.get('/pasos')])
   pasos.value = pasosRes.data
+})
+
+watch(() => route.query, (query) => {
+  filtros.value.id_paso = query.id_paso ? Number(query.id_paso) : (query.paso ? Number(query.paso) : '')
+  filtros.value.estado = query.estado || ''
+  pagina.value = 1
+  cargar()
 })
 </script>

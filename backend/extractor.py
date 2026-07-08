@@ -13,14 +13,14 @@ import unicodedata
 logger = logging.getLogger(__name__)
 
 DIR_BASE_UPLOADS = os.getenv("EPG_UPLOADS_DIR", "/opt/sistema_posgrado/uploads/expedientes")
-URL_BASE_EXPEDIENTES = os.getenv("EPG_UPLOADS_PUBLIC_URL", "https://dataepis.uandina.pe:49267/expedientes")
+URL_BASE_EXPEDIENTES = os.getenv("EPG_UPLOADS_PUBLIC_URL", "https://dataepis.uandina.pe/expedientes")
 
-PATRON_DNI = re.compile(r"\b(?:DNI|D\.N\.I)[.\s:NroÂ°Âº]*(\d{8})\b", re.IGNORECASE)
-PATRON_NRO_EXP = re.compile(r"Nro[:\s.]+(\d+)", re.IGNORECASE)
+PATRON_DNI = re.compile(r"\b(?:DNI|D\.N\.I)[.\s:Nro°º]*(\d{8})\b", re.IGNORECASE)
+PATRON_NRO_EXP = re.compile(r"(?:expediente\s*)?(?:#|Nro|N[°.º])[:\s.]*([0-9]{4,})", re.IGNORECASE)
 PATRON_EMAIL_ANY = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 PATRON_RESOLUCION = re.compile(r"RESOLUCI[OÓ]N\s+N[°.º]+\s*([\w\-]+)", re.IGNORECASE)
 PATRON_CODIGO_EMAIL_UAC = re.compile(r"([a-zA-Z0-9]{6,15}@uandina\.edu\.pe)", re.IGNORECASE)
-PATRON_CODIGO_ALU = re.compile(r"\b([a-zA-Z0-9]{6,15})\b")
+PATRON_CODIGO_ALU = re.compile(r"\b([0-9]{6,12}[A-Za-z]?)\b")
 PATRON_NOMBRE_FIRMA = re.compile(
     r"(?:Atentamente|Atte(?:ntamente)?)[,:\s]+"
     r"([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,4})",
@@ -31,9 +31,9 @@ PATRONES_PASO = [
     (1, "Nombramiento de Asesor", [r"nombramiento\s+de\s+asesor", r"designacion\s+de\s+asesor", r"asesor\s+de\s+tesis", r"solicito\s+asesor"]),
     (2, "Dictamen de Proyecto", [r"dictamen.*proyecto", r"dictaminante.*proyecto", r"revision.*proyecto", r"solicito\s+dictamen"]),
     (3, "Inscripcion del Proyecto", [r"inscripcion.*proyecto", r"inscribir.*proyecto", r"registro.*proyecto", r"aproba.*proyecto"]),
-    (4, "Declarado Apto", [r"declarado\s+apto", r"apto\s+para", r"aptitud"]),
     (5, "Dictamen de Tesis", [r"dictamen.*tesis", r"tesis\s+final", r"informe\s+del\s+asesor.*tesis", r"borrador.*tesis", r"dictamen.*borrador"]),
     (6, "Sustentacion", [r"sustentacion", r"fecha.*sustentacion", r"turnitin", r"informe\s+final"]),
+    (4, "Declarado Apto", [r"declarado\s+apto", r"apto\s+para", r"aptitud"]),
     (7, "Tramite del Diploma", [r"diploma", r"grado\s+academico", r"graduad"]),
 ]
 
@@ -47,9 +47,11 @@ def normalizar(texto: str) -> str:
 
 def detectar_grado(*textos: str) -> str | None:
     combinado = normalizar(" ".join(t for t in textos if t))
-    if re.search(r"\b(doctor|doctorado)\b", combinado):
+    match = re.search(r"(?:para optar|aspirante)\s+al\s+grado\s+academico\s+de\s+([^.;\n]+)", combinado)
+    fragmento = match.group(1) if match else combinado
+    if re.search(r"\b(doctor|doctorado)\b", fragmento):
         return "Doctor"
-    if re.search(r"\b(maestro|maestria|magister)\b", combinado):
+    if re.search(r"\b(maestro|maestria|magister)\b", fragmento):
         return "Maestro"
     return None
 
@@ -92,6 +94,10 @@ def extraer_datos_cuerpo(cuerpo: str) -> dict:
     if email_uac:
         datos["email_uac_alumno"] = email_uac[0]
         datos["codigo_alumno"] = email_uac[0].split("@")[0]
+
+    codigos = PATRON_CODIGO_ALU.findall(cuerpo)
+    if codigos and "codigo_alumno" not in datos:
+        datos["codigo_alumno"] = codigos[0].upper()
 
     emails = sorted(set(PATRON_EMAIL_ANY.findall(cuerpo)))
     if emails:
