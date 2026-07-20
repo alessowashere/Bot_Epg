@@ -23,6 +23,8 @@ MIGRACIONES = [
     ("20260725_mesa_tramite_operativa", "migrations.versions.20260725_mesa_tramite_operativa"),
     ("20260726_estado_documental_descartado", "migrations.versions.20260726_estado_documental_descartado"),
     ("20260727_personas_academicas", "migrations.versions.20260727_personas_academicas"),
+    ("20260728_coordinacion_docentes", "migrations.versions.20260728_coordinacion_docentes"),
+    ("20260729_documentos_seguimiento_docentes", "migrations.versions.20260729_documentos_seguimiento_docentes"),
 ]
 
 

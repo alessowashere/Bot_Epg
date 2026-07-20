@@ -654,3 +654,13 @@ sudo journalctl -u epg-bot.service -n 100 --no-pager
 - El Libro anual distingue documentos firmados de borradores. Para 2026 la última firmada es 0762; existen reservas auditables 0763 y 0765, por lo que el primer número libre es 0764. Una reserva no debe presentarse como resolución emitida.
 - Secretaría puede descartar una preparación antes de remitirla: se liberan número, fecha y referencia activa al Word, mientras el evento conserva número, nombre, URL y versión anteriores. La consulta docente sólo aparece en los pasos que la requieren o si ya existe una consulta.
 - La fuente docente nueva es `/opt/DOCENTES` y no se versiona. Contiene un consolidado de 315 docentes, evidencia SUNEDU detallada y dictados 2025-II/2026-I. Debe alimentar un módulo de Coordinación EPG mediante conciliación conservadora; no se debe declarar a alguien habilitado o de baja por inferencia.
+
+## Padrón docente y Coordinación EPG - 2026-07-20 21:45 UTC
+
+- Los Excel de `/opt/DOCENTES` son la fuente operativa más reciente. La carga produjo 312 docentes únicos de 315 filas, 244 grados, 485 afinidades y 283 dictados. Es idempotente y conserva los 1,701 docentes históricos; total físico 1,967.
+- `i7` es una mesa de trabajo: permite filtrar padrón, abrir ficha, revisar estado/especialidad, cargar y validar evidencia, añadir afinidades y registrar/atender trámites docentes por MPV, físico o interno.
+- `coordinacion_epg@uandina.edu.pe` tiene rol `Coordinacion_EPG` y acceso Google SSO; no se creó contraseña compartida. Su inicio redirige a la mesa docente.
+- Los archivos docentes quedan privados y se descargan por endpoint autenticado. PDF/DOCX intentan extracción de texto para futuras búsquedas, pero toda habilitación sigue requiriendo validación humana.
+- `DOCENTE_ANTIGUEDAD_GRADO_ANIOS` controla el umbral interno (3 por defecto). No debe presentarse como mandato legal mientras falte el documento institucional que lo sustente.
+- Las consultas de Secretaría registran primer/último acceso y cantidad de aperturas. El envío automático sigue apagado: se genera una invitación trazable para envío manual hasta configurar cuenta institucional y aprobación externa.
+- Numeración 2026: firmada 0762; 0763 y 0765 son reservas locales visibles y navegables; 0764 es el primer hueco libre.

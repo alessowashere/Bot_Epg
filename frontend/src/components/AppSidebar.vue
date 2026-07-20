@@ -184,6 +184,11 @@ const iniciales = computed(() => {
 const menuItems = computed(() => {
   const panel = { to: '/', label: 'Panel operativo', icon: 'pi-chart-bar' }
   const guia = { to: '/i10', label: 'Guía de operación', icon: 'pi-compass' }
+  if (auth.isCoordinacion) return [
+    panel,
+    { to: '/docentes', label: 'Coordinación docente', icon: 'pi-id-card' },
+    guia,
+  ]
   if (auth.isSecretaria) return [
     panel,
     { to: '/secretaria', label: 'Mesa de Secretaría', icon: 'pi-file-edit' },

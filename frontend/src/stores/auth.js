@@ -14,6 +14,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isDirectora = computed(() => rol.value === 'Directora')
   const isSecretaria = computed(() => rol.value === 'Secretaria_Academica')
   const isDictaminante = computed(() => rol.value === 'Dictaminante')
+  const isCoordinacion = computed(() => rol.value === 'Coordinacion_EPG')
   const requiereCambioPassword = computed(() => Boolean(usuario.value?.debe_cambiar_password))
   const enVistaRol = computed(() => Boolean(usuario.value?.modo_vista_rol))
 
@@ -72,6 +73,7 @@ export const useAuthStore = defineStore('auth', () => {
     isDirectora,
     isSecretaria,
     isDictaminante,
+    isCoordinacion,
     requiereCambioPassword,
     enVistaRol,
     login,

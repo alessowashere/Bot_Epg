@@ -41,7 +41,7 @@ const routes = [
   { path: '/i6', name: 'secretaria', component: SecretariaView, meta: { requiereAuth: true, soloSecretaria: true } },
   { path: '/v/:token', name: 'consulta-resolucion', component: ConsultaDisponibilidadView, meta: { publico: true, admiteSesion: true } },
   { path: '/q/:uuid_asignacion', name: 'dictaminante', component: DictaminanteView, meta: { publico: true } },
-  { path: '/i7', name: 'docentes', component: DocentesView, meta: { requiereAuth: true } },
+  { path: '/i7', name: 'docentes', component: DocentesView, meta: { requiereAuth: true, soloCoordinacion: true } },
   { path: '/i8', name: 'usuarios', component: UsuariosView, meta: { requiereAuth: true, soloAdmin: true } },
   { path: '/i9', name: 'reglas-resolucion', component: ReglasResolucionesView, meta: { requiereAuth: true, reglasResolucion: true } },
   { path: '/i10', name: 'guia-operacion', component: GuiaOperacionView, meta: { requiereAuth: true } },
@@ -86,6 +86,9 @@ router.beforeEach((to) => {
   if (to.name === 'login' && auth.isLoggedIn) {
     return { name: auth.requiereCambioPassword ? 'cambiar-password' : 'dashboard' }
   }
+  if (auth.isCoordinacion && to.name === 'dashboard') {
+    return { name: 'docentes' }
+  }
   if (to.meta.publico && !to.meta.admiteSesion && auth.isLoggedIn) {
     return { name: 'dashboard' }
   }
@@ -99,6 +102,9 @@ router.beforeEach((to) => {
     return { name: 'dashboard' }
   }
   if (to.meta.reglasResolucion && !(auth.isSecretaria || auth.isAdmin)) {
+    return { name: 'dashboard' }
+  }
+  if (to.meta.soloCoordinacion && !(auth.isCoordinacion || auth.isAdmin || auth.isSecretaria)) {
     return { name: 'dashboard' }
   }
 })

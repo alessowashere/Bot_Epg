@@ -86,6 +86,9 @@ def serializar_consulta(item, incluir_interno=True):
         "constancia_aceptada": bool(item.constancia_aceptada),
         "fecha_respuesta": item.fecha_respuesta.isoformat() if item.fecha_respuesta else None,
         "fecha_expiracion": item.fecha_expiracion.isoformat() if item.fecha_expiracion else None,
+        "fecha_primer_acceso": item.fecha_primer_acceso.isoformat() if item.fecha_primer_acceso else None,
+        "fecha_ultimo_acceso": item.fecha_ultimo_acceso.isoformat() if item.fecha_ultimo_acceso else None,
+        "cantidad_accesos": item.cantidad_accesos or 0,
     }
     if incluir_interno:
         data.update(

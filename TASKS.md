@@ -663,6 +663,16 @@ npm run build
 - [x] Separar en numeración la última resolución firmada (`0762`) de las reservas internas (`0763` y `0765`). El primer correlativo libre es `0764-2026/EPG-UAC`.
 - [x] Mostrar errores estructurados como mensajes legibles y añadir `Descartar preparación`, con confirmación, liberación de número y auditoría sin borrar la evidencia anterior.
 - [x] Mostrar la consulta docente sólo cuando la regla o una consulta existente la requieren.
-- [ ] Crear el módulo de **Coordinación EPG / Docentes** con padrón, grados SUNEDU, afinidad por programa, actividad por periodo y trámites MPV/físicos.
-- [ ] Importar y conciliar los tres Excel de `/opt/DOCENTES`: 315 docentes consolidados, 245 registros SUNEDU y 282 registros mensuales de dictado. No reemplazar automáticamente los 1,701 docentes históricos sin conciliación por DNI/correo/nombre.
+- [x] Crear el módulo de **Coordinación EPG / Docentes** con padrón, grados SUNEDU, afinidad por programa, actividad por periodo, evidencias y trámites MPV/físicos/internos.
+- [x] Importar de forma idempotente los Excel de `/opt/DOCENTES`: 315 filas conciliadas en 312 docentes únicos, 244 grados, 485 afinidades y 283 dictados agrupados en 193 docente-periodos. Los 1,701 docentes históricos se conservaron.
 - [ ] Mantener “tres años desde el grado” como regla institucional configurable y pendiente de documento interno; la Ley Universitaria vigente exige el grado según nivel, pero no sustenta por sí sola ese umbral.
+
+## Coordinación EPG y seguimiento docente - 2026-07-20 21:45 UTC
+
+- [x] Crear rol `Coordinacion_EPG` y cuenta Google `coordinacion_epg@uandina.edu.pe` (`coordinacion_epg`, sin contraseña local).
+- [x] Publicar una interfaz para buscar/filtrar, revisar ficha, estado y especialidad, cargar CV/SUNEDU/constancias, validar documentos, registrar afinidades y atender trámites.
+- [x] Registrar en consultas docentes correo elegido, vencimiento, primer/último acceso, cantidad de aperturas, respuesta y evidencia.
+- [x] Mostrar las reservas 0763 y 0765 con persona, estado y acceso al trabajo. La última firmada sigue siendo 0762 y el primer hueco libre es 0764.
+- [x] Aplicar migraciones `20260728_coordinacion_docentes` y `20260729_documentos_seguimiento_docentes`; respaldos `pre_importacion_padron_docentes_20260720_2132.sql` y `pre_padron_docentes_20260720_213611.sql`.
+- [ ] Revisar datos anómalos de fuente desde la interfaz (correo, DNI, grado o afinidad) y marcar cada ficha `Verificado` u `Observado`; no corregir por intuición.
+- [ ] Configurar y aprobar una cuenta institucional de salida antes de enviar consultas automáticamente. Hoy el enlace se genera, registra y rastrea, pero se remite manualmente.

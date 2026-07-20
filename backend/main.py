@@ -56,7 +56,7 @@ from auth import (
 from capacidades import METODOS_MUTABLES, obtener_politica, rutas_mutables_sin_politica
 from database import SessionLocal, leer_env_local
 from estado_bot import leer_estado_bot
-from extractor import extraer_datos_cuerpo, extraer_todos_adjuntos, generar_resumen_ticket
+from extractor import extraer_datos_cuerpo, extraer_texto_archivo, extraer_todos_adjuntos, generar_resumen_ticket
 from flujo_resoluciones import (
     ESTADOS_ACTIVOS,
     cambiar_estado as cambiar_estado_tramite,
@@ -482,6 +482,37 @@ class ResponderConsultaPayload(BaseModel):
 
 class NotaTramitePayload(BaseModel):
     nota: str = Field(..., min_length=3, max_length=2000)
+
+
+class DocenteTramitePayload(BaseModel):
+    id_docente: Optional[int] = None
+    canal: str = Field(..., pattern="^(MPV|Fisico|Interno)$")
+    tipo: str = Field(..., min_length=3, max_length=100)
+    referencia: Optional[str] = Field(None, max_length=100)
+    descripcion: Optional[str] = Field(None, max_length=3000)
+
+
+class DocenteTramiteEstadoPayload(BaseModel):
+    estado: str = Field(..., pattern="^(Recibido|En_revision|Observado|Atendido|Archivado)$")
+    descripcion: Optional[str] = Field(None, max_length=3000)
+
+
+class DocenteVerificacionPayload(BaseModel):
+    estado: str
+    estado_docente: Optional[str] = None
+    especialidad: Optional[str] = None
+
+
+class DocenteProgramaPayload(BaseModel):
+    nivel: str
+    programa: str
+    especialidad: Optional[str] = None
+    estado: str = "Validado"
+
+
+class DocenteDocumentoRevisionPayload(BaseModel):
+    estado: str
+    nota: Optional[str] = None
 
 
 class RegistrarNotificacionPayload(BaseModel):
@@ -1649,7 +1680,7 @@ def iniciar_vista_por_rol(
     payload: VistaRolPayload,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: models.UsuarioSistema = Depends(get_current_admin),
+    current_user: models.UsuarioSistema = Depends(get_current_user),
 ):
     """Emite una sesión temporal, solo lectura, con el rol seleccionado por Administración."""
     destino = db.query(models.UsuarioSistema).filter(
@@ -1725,7 +1756,7 @@ def crear_usuario(
     db: Session = Depends(get_db),
     current_user: models.UsuarioSistema = Depends(get_current_admin),
 ):
-    if rol not in {"Administrador", "Recepcion", "Secretaria_Academica", "Directora", "Dictaminante"}:
+    if rol not in {"Administrador", "Recepcion", "Secretaria_Academica", "Directora", "Dictaminante", "Coordinacion_EPG"}:
         raise HTTPException(status_code=400, detail="Rol de usuario no permitido")
     usuario = models.UsuarioSistema(
         nombre_completo=nombre_completo,
@@ -1757,7 +1788,7 @@ def actualizar_usuario(
     usuario = db.query(models.UsuarioSistema).filter(models.UsuarioSistema.id_usuario == id_usuario).first()
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    if rol not in {"Administrador", "Recepcion", "Secretaria_Academica", "Directora", "Dictaminante"}:
+    if rol not in {"Administrador", "Recepcion", "Secretaria_Academica", "Directora", "Dictaminante", "Coordinacion_EPG"}:
         raise HTTPException(status_code=400, detail="Rol de usuario no permitido")
     usuario.nombre_completo = nombre_completo
     usuario.correo = correo
@@ -5342,6 +5373,11 @@ def actualizar_plantilla_consulta(
 @app.get("/api/consultas-resolucion/{token}")
 def ver_consulta_resolucion(token: str, db: Session = Depends(get_db)):
     consulta = obtener_consulta_por_token(db, token)
+    ahora = datetime.utcnow()
+    consulta.fecha_primer_acceso = consulta.fecha_primer_acceso or ahora
+    consulta.fecha_ultimo_acceso = ahora
+    consulta.cantidad_accesos = (consulta.cantidad_accesos or 0) + 1
+    db.commit()
     tramite = consulta.tramite
     return {
         "consulta": serializar_consulta(consulta, incluir_interno=False),
@@ -5746,33 +5782,145 @@ def responder_aceptacion(
     return {"status": "ok", "estado_aceptacion": estado}
 
 
+def serializar_docente_operativo(docente, db, detalle=False):
+    antiguedad = int(os.getenv("DOCENTE_ANTIGUEDAD_GRADO_ANIOS", "3"))
+    corte = datetime.utcnow().date().replace(year=datetime.utcnow().year - antiguedad)
+    grados_validos = [g for g in docente.grados if g.tipo in {"MAESTRIA", "DOCTOR"} and g.fecha_diploma]
+    cumple = any(g.fecha_diploma <= corte for g in grados_validos)
+    carga_actual = db.query(models.AsignacionTesis).filter(models.AsignacionTesis.id_docente == docente.id_docente, models.AsignacionTesis.estado_asignacion == "Activo").count()
+    data = {
+        "id_docente": docente.id_docente, "dni": docente.dni, "nombre_completo": docente.nombre_completo,
+        "correo": docente.correo, "correo_institucional": docente.correo_institucional, "correo_personal": docente.correo_personal,
+        "telefono": docente.telefono, "especialidad": docente.especialidad, "tipo_contrato": docente.tipo_contrato,
+        "condicion_laboral": docente.condicion_laboral, "estado": docente.estado,
+        "estado_verificacion": docente.estado_verificacion, "fecha_verificacion": docente.fecha_verificacion.isoformat() if docente.fecha_verificacion else None,
+        "titulo_profesional": docente.titulo_profesional, "universidad_procedencia": docente.universidad_procedencia,
+        "max_tesis_permitidas": docente.max_tesis_permitidas, "carga_actual": carga_actual,
+        "disponible": carga_actual < docente.max_tesis_permitidas and docente.estado == "Activo",
+        "cumple_antiguedad": cumple, "antiguedad_requerida_anios": antiguedad,
+        "grados_total": len(docente.grados), "programas_total": len(docente.programas), "actividad_total": sum(a.registros for a in docente.actividades),
+    }
+    if detalle:
+        data.update({
+            "grados": [{"id_grado":g.id_grado,"tipo":g.tipo,"denominacion":g.denominacion,"universidad":g.universidad,"pais":g.pais,"fecha_diploma":g.fecha_diploma.isoformat() if g.fecha_diploma else None,"fuente":g.fuente,"verificado":g.verificado} for g in docente.grados],
+            "programas": [{"id_programa_docente":p.id_programa_docente,"nivel":p.nivel,"programa":p.programa,"especialidad":p.especialidad,"estado":p.estado,"fuente":p.fuente} for p in docente.programas],
+            "actividades": [{"periodo":a.periodo,"programa":a.programa,"registros":a.registros} for a in docente.actividades],
+            "documentos": [{"uuid":d.uuid,"tipo":d.tipo,"nombre_archivo":d.nombre_archivo,"estado_revision":d.estado_revision,"nota_revision":d.nota_revision,"fecha_carga":d.fecha_carga.isoformat() if d.fecha_carga else None,"tiene_texto":bool(d.texto_extraido)} for d in docente.documentos],
+        })
+    return data
+
+
 @app.get("/api/docentes")
-def listar_docentes(db: Session = Depends(get_db)):
-    docentes = db.query(models.Docente).order_by(models.Docente.nombre_completo).all()
+def listar_docentes(busqueda: Optional[str]=None, nivel: Optional[str]=None, programa: Optional[str]=None, estado: Optional[str]=None, verificacion: Optional[str]=None, page:int=Query(1,ge=1), per_page:int=Query(40,ge=1,le=200), db: Session = Depends(get_db)):
+    query = db.query(models.Docente)
+    if busqueda:
+        like=f"%{busqueda.strip()}%"; query=query.filter(or_(models.Docente.nombre_completo.like(like),models.Docente.dni.like(like),models.Docente.correo.like(like),models.Docente.especialidad.like(like)))
+    if estado: query=query.filter(models.Docente.estado==estado)
+    if verificacion: query=query.filter(models.Docente.estado_verificacion==verificacion)
+    if nivel: query=query.filter(models.Docente.programas.any(models.DocentePrograma.nivel==nivel))
+    if programa: query=query.filter(models.Docente.programas.any(models.DocentePrograma.programa.like(f"%{programa}%")))
+    total, paginas, docentes = paginar(query.order_by(models.Docente.nombre_completo),page,per_page)
     resultados = []
     for docente in docentes:
-        carga_actual = (
-            db.query(models.AsignacionTesis)
-            .filter(models.AsignacionTesis.id_docente == docente.id_docente, models.AsignacionTesis.estado_asignacion == "Activo")
-            .count()
-        )
-        resultados.append(
-            {
-                "id_docente": docente.id_docente,
-                "dni": docente.dni,
-                "nombre_completo": docente.nombre_completo,
-                "correo": docente.correo,
-                "correo_institucional": docente.correo_institucional,
-                "correo_personal": docente.correo_personal,
-                "especialidad": docente.especialidad,
-                "tipo_contrato": docente.tipo_contrato,
-                "estado": docente.estado,
-                "max_tesis_permitidas": docente.max_tesis_permitidas,
-                "carga_actual": carga_actual,
-                "disponible": carga_actual < docente.max_tesis_permitidas and docente.estado == "Activo",
-            }
-        )
-    return {"total": len(resultados), "data": resultados}
+        resultados.append(serializar_docente_operativo(docente,db))
+    return {"total": total, "page":page, "total_pages":paginas, "data": resultados}
+
+
+@app.get("/api/docentes/resumen")
+def resumen_docentes(db: Session = Depends(get_db)):
+    return {"total":db.query(models.Docente).count(),"padron_epg":db.query(models.Docente).filter(models.Docente.estado_verificacion=="Padron_EPG").count(),"activos":db.query(models.Docente).filter(models.Docente.estado=="Activo").count(),"con_sunedu":db.query(models.Docente).filter(models.Docente.grados.any(models.DocenteGrado.verificado==True)).count(),"maestria":db.query(models.Docente).filter(models.Docente.programas.any(models.DocentePrograma.nivel=="Maestria")).count(),"doctorado":db.query(models.Docente).filter(models.Docente.programas.any(models.DocentePrograma.nivel=="Doctorado")).count(),"tramites_pendientes":db.query(models.DocenteTramite).filter(models.DocenteTramite.estado.in_(["Recibido","En_revision","Observado"])).count()}
+
+
+@app.get("/api/docentes/{id_docente}")
+def detalle_docente(id_docente:int, db:Session=Depends(get_db)):
+    docente=db.query(models.Docente).filter_by(id_docente=id_docente).first()
+    if not docente: raise HTTPException(status_code=404,detail="Docente no encontrado")
+    return serializar_docente_operativo(docente,db,True)
+
+
+@app.put("/api/docentes/{id_docente}/verificacion")
+def verificar_docente(id_docente:int,payload:DocenteVerificacionPayload,db:Session=Depends(get_db),current_user:models.UsuarioSistema=Depends(get_current_user)):
+    docente=db.query(models.Docente).filter_by(id_docente=id_docente).first()
+    if not docente:raise HTTPException(status_code=404,detail="Docente no encontrado")
+    if payload.estado not in {"Pendiente","Padron_EPG","Verificado","Observado"}:raise HTTPException(status_code=400,detail="Estado de verificación no válido")
+    docente.estado_verificacion=payload.estado
+    docente.fecha_verificacion=datetime.utcnow() if payload.estado=="Verificado" else docente.fecha_verificacion
+    if payload.estado_docente:
+        if payload.estado_docente not in {"Activo","Inactivo","De Licencia"}:raise HTTPException(status_code=400,detail="Estado docente no válido")
+        docente.estado=payload.estado_docente
+    if payload.especialidad is not None:docente.especialidad=payload.especialidad.strip() or None
+    docente.fuente_actualizacion=f"Revisión manual por {current_user.nombre_completo}"
+    db.commit();return {"status":"ok","docente":serializar_docente_operativo(docente,db,True)}
+
+
+@app.post("/api/docentes/{id_docente}/programas")
+def agregar_programa_docente(id_docente:int,payload:DocenteProgramaPayload,db:Session=Depends(get_db)):
+    docente=db.query(models.Docente).filter_by(id_docente=id_docente).first()
+    if not docente:raise HTTPException(status_code=404,detail="Docente no encontrado")
+    if payload.nivel not in {"Maestria","Doctorado"}:raise HTTPException(status_code=400,detail="Nivel no válido")
+    programa=payload.programa.strip()
+    if not programa:raise HTTPException(status_code=400,detail="Indica el programa")
+    item=db.query(models.DocentePrograma).filter_by(id_docente=id_docente,nivel=payload.nivel,programa=programa).first()
+    if item:item.especialidad=payload.especialidad or item.especialidad;item.estado=payload.estado
+    else:db.add(models.DocentePrograma(id_docente=id_docente,nivel=payload.nivel,programa=programa,especialidad=payload.especialidad,estado=payload.estado,fuente="Revisión manual"))
+    db.commit();return {"status":"ok"}
+
+
+@app.post("/api/docentes/{id_docente}/documentos")
+def cargar_documento_docente(id_docente:int,tipo:str=Form("Otro"),archivo:UploadFile=File(...),db:Session=Depends(get_db),current_user:models.UsuarioSistema=Depends(get_current_user)):
+    docente=db.query(models.Docente).filter_by(id_docente=id_docente).first()
+    if not docente:raise HTTPException(status_code=404,detail="Docente no encontrado")
+    nombre=Path(archivo.filename or "documento").name;extension=Path(nombre).suffix.lower()
+    if extension not in {".pdf",".docx",".doc",".xlsx",".xls",".jpg",".jpeg",".png"}:raise HTTPException(status_code=400,detail="Formato no admitido")
+    contenido=archivo.file.read()
+    if not contenido:raise HTTPException(status_code=400,detail="El archivo está vacío")
+    if len(contenido)>50*1024*1024:raise HTTPException(status_code=413,detail="El archivo supera 50 MB")
+    digest=hashlib.sha256(contenido).hexdigest();existente=db.query(models.DocenteDocumento).filter_by(id_docente=id_docente,hash_sha256=digest).first()
+    if existente:return {"status":"ok","uuid":existente.uuid,"mensaje":"El documento ya estaba registrado"}
+    carpeta=Path(valor_configuracion("EPG_PRIVATE_UPLOADS_DIR","/opt/sistema_posgrado/uploads_privados"))/"docentes"/str(id_docente);carpeta.mkdir(parents=True,exist_ok=True)
+    destino=carpeta/f"{uuid_lib.uuid4().hex}{extension}";destino.write_bytes(contenido)
+    try:texto=extraer_texto_archivo(str(destino))[:250000] or None
+    except Exception:texto=None
+    item=models.DocenteDocumento(id_docente=id_docente,tipo=tipo,nombre_archivo=nombre,ruta_archivo=str(destino),hash_sha256=digest,texto_extraido=texto,cargado_por_nombre=current_user.nombre_completo)
+    db.add(item);db.commit();db.refresh(item);return {"status":"ok","uuid":item.uuid,"texto_extraido":bool(texto)}
+
+
+@app.get("/api/docente-documentos/{referencia}/archivo")
+def descargar_documento_docente(referencia:str,db:Session=Depends(get_db)):
+    item=db.query(models.DocenteDocumento).filter_by(uuid=referencia).first()
+    if not item or not Path(item.ruta_archivo).is_file():raise HTTPException(status_code=404,detail="Documento no disponible")
+    return FileResponse(item.ruta_archivo,filename=item.nombre_archivo)
+
+
+@app.put("/api/docente-documentos/{referencia}/revision")
+def revisar_documento_docente(referencia:str,payload:DocenteDocumentoRevisionPayload,db:Session=Depends(get_db)):
+    item=db.query(models.DocenteDocumento).filter_by(uuid=referencia).first()
+    if not item:raise HTTPException(status_code=404,detail="Documento no encontrado")
+    if payload.estado not in {"Pendiente","Validado","Observado"}:raise HTTPException(status_code=400,detail="Estado no válido")
+    item.estado_revision=payload.estado;item.nota_revision=payload.nota;db.commit();return {"status":"ok"}
+
+
+@app.get("/api/docente-tramites")
+def listar_tramites_docentes(estado:Optional[str]=None,db:Session=Depends(get_db)):
+    q=db.query(models.DocenteTramite)
+    if estado:q=q.filter(models.DocenteTramite.estado==estado)
+    items=q.order_by(models.DocenteTramite.fecha_actualizacion.desc()).limit(300).all()
+    return {"total":len(items),"data":[{"uuid":x.uuid,"id_docente":x.id_docente,"docente":x.docente.nombre_completo if x.docente else None,"canal":x.canal,"tipo":x.tipo,"estado":x.estado,"referencia":x.referencia,"descripcion":x.descripcion,"fecha_recepcion":x.fecha_recepcion.isoformat()} for x in items]}
+
+
+@app.post("/api/docente-tramites")
+def crear_tramite_docente(payload:DocenteTramitePayload,db:Session=Depends(get_db),current_user:models.UsuarioSistema=Depends(get_current_user)):
+    item=models.DocenteTramite(**payload.model_dump(),creado_por_nombre=current_user.nombre_completo)
+    db.add(item);db.commit();db.refresh(item);return {"status":"ok","uuid":item.uuid}
+
+
+@app.put("/api/docente-tramites/{referencia}/estado")
+def cambiar_tramite_docente(referencia:str,payload:DocenteTramiteEstadoPayload,db:Session=Depends(get_db),current_user:models.UsuarioSistema=Depends(get_current_user)):
+    item=db.query(models.DocenteTramite).filter(models.DocenteTramite.uuid==referencia).first()
+    if not item:raise HTTPException(status_code=404,detail="Trámite docente no encontrado")
+    item.estado=payload.estado
+    if payload.descripcion:item.descripcion=payload.descripcion
+    db.commit();return {"status":"ok"}
 
 
 @app.post("/api/docentes")
@@ -5786,8 +5934,9 @@ def crear_docente(
     tipo_contrato: str = "Indeterminado",
     max_tesis: int = 5,
     db: Session = Depends(get_db),
-    current_user: models.UsuarioSistema = Depends(get_current_admin),
+    current_user: models.UsuarioSistema = Depends(get_current_user),
 ):
+    exigir_rol(current_user, {"Administrador", "Coordinacion_EPG"}, "administrar docentes")
     docente = models.Docente(
         dni=dni,
         nombre_completo=nombre_completo,
@@ -5816,8 +5965,9 @@ def actualizar_docente(
     estado: str = "Activo",
     max_tesis: int = 5,
     db: Session = Depends(get_db),
-    current_user: models.UsuarioSistema = Depends(get_current_admin),
+    current_user: models.UsuarioSistema = Depends(get_current_user),
 ):
+    exigir_rol(current_user, {"Administrador", "Coordinacion_EPG"}, "administrar docentes")
     docente = db.query(models.Docente).filter(models.Docente.id_docente == id_docente).first()
     if not docente:
         raise HTTPException(status_code=404, detail="Docente no encontrado")

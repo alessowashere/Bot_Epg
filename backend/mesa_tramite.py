@@ -351,6 +351,8 @@ def control_numeracion(db, anio):
             consumidos[numero].append(
                 {
                     "origen": "tramite_sistema",
+                    "uuid": tramite.uuid,
+                    "id_tramite": tramite.id_tramite,
                     "referencia": tramite.numero_resolucion,
                     "estudiante": tramite.expediente.nombre_alumno if tramite.expediente else None,
                     "estado": tramite.estado,

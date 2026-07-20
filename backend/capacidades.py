@@ -27,13 +27,13 @@ POLITICAS_MUTABLES: dict[tuple[str, str], PoliticaCapacidad] = {
     ("POST", "/api/auth/login"): politica("auth.iniciar_sesion", publico=True),
     ("POST", "/api/auth/vista-rol"): politica("auth.vista_rol", "Administrador"),
     ("POST", "/api/auth/logout"): politica(
-        "auth.cerrar_sesion", "Administrador", "Recepcion", "Secretaria_Academica", "Directora", "Dictaminante"
+        "auth.cerrar_sesion", "Administrador", "Recepcion", "Secretaria_Academica", "Directora", "Dictaminante", "Coordinacion_EPG"
     ),
     ("POST", "/api/auth/cerrar-otras-sesiones"): politica(
-        "auth.cerrar_otras_sesiones", "Administrador", "Recepcion", "Secretaria_Academica", "Directora", "Dictaminante"
+        "auth.cerrar_otras_sesiones", "Administrador", "Recepcion", "Secretaria_Academica", "Directora", "Dictaminante", "Coordinacion_EPG"
     ),
     ("PUT", "/api/auth/cambiar-password"): politica(
-        "usuario.contrasena.cambiar", "Administrador", "Recepcion", "Secretaria_Academica", "Directora", "Dictaminante"
+        "usuario.contrasena.cambiar", "Administrador", "Recepcion", "Secretaria_Academica", "Directora", "Dictaminante", "Coordinacion_EPG"
     ),
     ("POST", "/api/usuarios"): politica("usuario.administrar", "Administrador"),
     ("PUT", "/api/usuarios/{id_usuario}"): politica("usuario.administrar", "Administrador"),
@@ -140,8 +140,14 @@ POLITICAS_MUTABLES: dict[tuple[str, str], PoliticaCapacidad] = {
     ("POST", "/api/dictaminante/{uuid}/responder"): politica(
         "dictaminante.enlace_publico.responder", publico=True
     ),
-    ("POST", "/api/docentes"): politica("docente.administrar", "Administrador"),
-    ("PUT", "/api/docentes/{id_docente}"): politica("docente.administrar", "Administrador"),
+    ("POST", "/api/docentes"): politica("docente.administrar", "Administrador", "Coordinacion_EPG"),
+    ("PUT", "/api/docentes/{id_docente}"): politica("docente.administrar", "Administrador", "Coordinacion_EPG"),
+    ("PUT", "/api/docentes/{id_docente}/verificacion"): politica("docente.verificar", "Administrador", "Coordinacion_EPG"),
+    ("POST", "/api/docentes/{id_docente}/programas"): politica("docente.verificar", "Administrador", "Coordinacion_EPG"),
+    ("POST", "/api/docentes/{id_docente}/documentos"): politica("docente.documento.cargar", "Administrador", "Coordinacion_EPG"),
+    ("PUT", "/api/docente-documentos/{referencia}/revision"): politica("docente.documento.revisar", "Administrador", "Coordinacion_EPG"),
+    ("POST", "/api/docente-tramites"): politica("docente.tramite.crear", "Administrador", "Coordinacion_EPG"),
+    ("PUT", "/api/docente-tramites/{referencia}/estado"): politica("docente.tramite.resolver", "Administrador", "Coordinacion_EPG"),
     ("POST", "/api/admin/importar-excel"): politica("admin.importar", "Administrador"),
     ("POST", "/api/admin/sync-historico"): politica("admin.sync_historico", "Administrador"),
     ("POST", "/api/admin/conciliacion-identidades/{tipo}/{referencia}"): politica("admin.conciliar_identidades", "Administrador"),

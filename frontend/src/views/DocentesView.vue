@@ -1,199 +1,75 @@
 <template>
   <div class="page-shell animate-fade-in">
-    <div class="flex items-center justify-between">
-      <div>
-        <p class="eyebrow">Operacion academica</p>
-        <h2 class="page-title">Docentes</h2>
-        <p class="page-subtitle">Carga laboral y asignaciones de tesis</p>
+    <header class="flex flex-wrap items-end justify-between gap-3">
+      <div><p class="eyebrow">Coordinación EPG</p><h2 class="page-title">Docentes y capacidad académica</h2><p class="page-subtitle">Padrón actualizado, grados verificados, afinidad y actividad docente.</p></div>
+      <button class="btn-primary" @click="modalTramite=true"><i class="pi pi-plus"></i>Registrar trámite</button>
+    </header>
+
+    <div v-if="mensaje" :class="['rounded-md border px-3 py-2 text-xs',error?'border-red-400 bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-200':'border-emerald-400 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200']">{{ mensaje }}</div>
+
+    <section class="grid grid-cols-2 gap-3 lg:grid-cols-7">
+      <button v-for="m in metricas" :key="m.label" class="card text-left hover:border-cyan-400" @click="m.accion?.()"><p class="text-[10px] uppercase text-slate-500">{{m.label}}</p><p class="mt-1 text-2xl font-bold text-slate-950 dark:text-white">{{m.valor}}</p></button>
+    </section>
+
+    <nav class="flex gap-2 border-b border-slate-200 pb-3 dark:border-slate-800">
+      <button :class="vista==='padron'?'btn-primary':'btn-outline'" class="btn-sm" @click="vista='padron'"><i class="pi pi-users"></i>Padrón docente</button>
+      <button :class="vista==='tramites'?'btn-primary':'btn-outline'" class="btn-sm" @click="vista='tramites';cargarTramites()"><i class="pi pi-inbox"></i>Trámites <span class="badge ml-1">{{resumen.tramites_pendientes||0}}</span></button>
+    </nav>
+
+    <template v-if="vista==='padron'">
+      <div class="filter-bar grid gap-2 md:grid-cols-[minmax(220px,1fr)_160px_190px_160px_auto]">
+        <input v-model="filtros.busqueda" class="input-field" placeholder="Nombre, DNI, correo o especialidad" @keyup.enter="buscar" />
+        <select v-model="filtros.nivel" class="input-field" @change="buscar"><option value="">Todos los niveles</option><option>Maestria</option><option>Doctorado</option></select>
+        <input v-model="filtros.programa" class="input-field" placeholder="Programa o campo" @keyup.enter="buscar" />
+        <select v-model="filtros.verificacion" class="input-field" @change="buscar"><option value="">Toda verificación</option><option value="Padron_EPG">Padrón EPG</option><option value="Pendiente">Pendiente</option></select>
+        <button class="btn-primary btn-sm" @click="buscar"><i class="pi pi-search"></i>Buscar</button>
       </div>
-      <button @click="abrirForm(null)" class="btn-primary">
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-        Nuevo Docente
-      </button>
-    </div>
+      <section class="card overflow-hidden p-0">
+        <div class="overflow-auto"><table class="data-table"><thead><tr><th>Docente</th><th>Grados y verificación</th><th>Afinidad</th><th>Actividad</th><th>Estado</th><th></th></tr></thead><tbody>
+          <tr v-for="d in docentes" :key="d.id_docente">
+            <td><p class="font-semibold text-slate-950 dark:text-white">{{d.nombre_completo}}</p><p class="text-[10px] text-slate-500">{{d.dni||'DNI pendiente'}} · {{d.correo||'sin correo'}}</p></td>
+            <td><p class="text-xs">{{d.grados_total}} registro(s)</p><span :class="d.cumple_antiguedad?'badge-graduado':'badge-observado'">{{d.cumple_antiguedad?'Antigüedad verificada':'Revisar antigüedad'}}</span></td>
+            <td class="text-xs">{{d.programas_total}} campo(s)</td><td class="text-xs">{{d.actividad_total}} dictado(s)</td>
+            <td><span :class="d.estado==='Activo'?'badge-graduado':'badge-caduco'">{{d.estado}}</span><small class="mt-1 block text-slate-500">{{d.estado_verificacion}}</small></td>
+            <td><button class="icon-btn" title="Abrir ficha" @click="abrir(d)"><i class="pi pi-arrow-right"></i></button></td>
+          </tr><tr v-if="!docentes.length"><td colspan="6" class="py-12 text-center text-slate-500">No hay docentes para estos filtros.</td></tr>
+        </tbody></table></div>
+        <footer class="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs text-slate-500 dark:border-slate-700"><span>{{total}} docentes · página {{pagina}} de {{paginas}}</span><div class="flex gap-2"><button class="btn-outline btn-sm" :disabled="pagina<=1" @click="pagina--;cargar()">Anterior</button><button class="btn-outline btn-sm" :disabled="pagina>=paginas" @click="pagina++;cargar()">Siguiente</button></div></footer>
+      </section>
+    </template>
 
-    <!-- Búsqueda -->
-    <div class="filter-bar relative">
-      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803a7.5 7.5 0 0010.607 10.607z" /></svg>
-      <input v-model="busqueda" class="input-field pl-9" placeholder="Buscar docente..." />
-    </div>
+    <section v-else class="card overflow-hidden p-0">
+      <div class="flex flex-wrap gap-2 border-b border-slate-200 p-3 dark:border-slate-700"><button v-for="e in estadosTramite" :key="e" class="btn-outline btn-sm" @click="filtroTramite=e;cargarTramites()">{{e||'Todos'}}</button></div>
+      <table class="data-table"><thead><tr><th>Recepción</th><th>Docente</th><th>Trámite</th><th>Canal</th><th>Estado</th><th></th></tr></thead><tbody><tr v-for="t in tramites" :key="t.uuid"><td class="text-xs">{{fecha(t.fecha_recepcion)}}</td><td>{{t.docente||'Por identificar'}}</td><td><strong>{{t.tipo}}</strong><small class="block text-slate-500">{{t.referencia||t.descripcion||''}}</small></td><td>{{t.canal}}</td><td><span class="badge-proceso">{{t.estado}}</span></td><td><select :value="t.estado" class="input-field text-xs" @change="cambiarEstado(t,$event.target.value)"><option v-for="e in estadosTramite.slice(1)" :key="e">{{e}}</option></select></td></tr></tbody></table>
+    </section>
 
-    <!-- Grilla de docentes -->
-    <div v-if="cargando" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-      <div v-for="i in 6" :key="i" class="h-32 bg-slate-800/60 rounded-xl animate-pulse"></div>
-    </div>
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-      <div
-        v-for="d in docentesFiltrados" :key="d.id_docente"
-        class="card hover:border-slate-600 transition-all duration-200"
-      >
-        <div class="flex items-start gap-3">
-          <!-- Avatar -->
-          <div :class="['w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0',
-            d.estado === 'Activo' ? 'bg-sky-700 text-white dark:bg-cyan-600' : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300']">
-            {{ d.nombre_completo.split(' ')[0][0] }}{{ d.nombre_completo.split(' ')[1]?.[0] || '' }}
-          </div>
-          <div class="flex-1 min-w-0">
-            <p class="font-semibold text-slate-900 text-sm truncate dark:text-white">{{ d.nombre_completo }}</p>
-            <p class="text-xs text-slate-400 truncate">{{ d.especialidad || 'Sin especialidad' }}</p>
-            <div class="flex items-center gap-1.5 mt-1">
-              <span :class="[
-                'badge text-[10px]',
-                d.estado === 'Activo' ? 'badge-graduado' :
-                d.estado === 'De Licencia' ? 'badge-observado' : 'badge-caduco'
-              ]">{{ d.estado }}</span>
-              <span class="badge badge-nuevo text-[10px]">{{ d.tipo_contrato }}</span>
-            </div>
-          </div>
-          <button @click="abrirForm(d)" class="btn-ghost btn-sm flex-shrink-0" title="Editar docente" aria-label="Editar docente">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
-          </button>
-        </div>
+    <div v-if="detalle" class="fixed inset-0 z-50 flex justify-end bg-black/55" @click.self="detalle=null"><aside class="h-full w-full max-w-2xl overflow-y-auto bg-white p-6 shadow-2xl dark:bg-slate-950"><header class="flex justify-between gap-4"><div><p class="eyebrow">Ficha docente</p><h3 class="section-title">{{detalle.nombre_completo}}</h3><p class="mt-1 text-xs text-slate-500">{{detalle.dni||'Sin DNI'}} · {{detalle.correo||'Sin correo'}}</p></div><button class="icon-btn" @click="detalle=null"><i class="pi pi-times"></i></button></header>
+      <div class="mt-5 grid gap-3 md:grid-cols-3"><label class="card"><span class="input-label">Estado</span><select v-model="edicion.estado_docente" class="input-field mt-2"><option>Activo</option><option>Inactivo</option><option>De Licencia</option></select></label><label class="card"><span class="input-label">Verificación</span><select v-model="edicion.estado" class="input-field mt-2"><option>Pendiente</option><option>Padron_EPG</option><option>Verificado</option><option>Observado</option></select></label><div class="card"><p class="input-label">Regla interna</p><strong :class="detalle.cumple_antiguedad?'text-emerald-600':'text-amber-600'">{{detalle.cumple_antiguedad?'Cumple':'Pendiente'}}</strong><small class="mt-2 block text-slate-500">{{detalle.antiguedad_requerida_anios}} años desde un grado verificable.</small></div></div>
+      <div class="mt-3 flex gap-2"><input v-model="edicion.especialidad" class="input-field flex-1" placeholder="Especialidad principal"/><button class="btn-primary" @click="guardarVerificacion"><i class="pi pi-check"></i>Guardar revisión</button></div>
+      <section class="mt-5"><h4 class="font-semibold">Grados y títulos</h4><div class="mt-2 space-y-2"><article v-for="g in detalle.grados" :key="g.id_grado" class="rounded border border-slate-200 p-3 text-xs dark:border-slate-700"><div class="flex justify-between"><strong>{{g.tipo}}</strong><span :class="g.verificado?'badge-graduado':'badge-observado'">{{g.verificado?'SUNEDU':'Por verificar'}}</span></div><p class="mt-1">{{g.denominacion}}</p><p class="text-slate-500">{{g.universidad||'Universidad pendiente'}} · {{g.fecha_diploma||'fecha pendiente'}}</p></article></div></section>
+      <section class="mt-5"><div class="flex items-center justify-between"><h4 class="font-semibold">Afinidad por nivel y campo</h4><button class="btn-outline btn-sm" @click="mostrarPrograma=!mostrarPrograma"><i class="pi pi-plus"></i>Añadir</button></div><div class="mt-2 flex flex-wrap gap-2"><span v-for="p in detalle.programas" :key="p.id_programa_docente" class="rounded border border-cyan-300 px-3 py-2 text-xs dark:border-cyan-700"><strong>{{p.nivel}}</strong> · {{p.programa}}</span><span v-if="!detalle.programas.length" class="text-xs text-slate-500">Sin afinidades registradas.</span></div><form v-if="mostrarPrograma" class="mt-3 grid gap-2 md:grid-cols-[130px_1fr_auto]" @submit.prevent="agregarPrograma"><select v-model="programa.nivel" class="input-field"><option>Maestria</option><option>Doctorado</option></select><input v-model="programa.programa" required class="input-field" placeholder="Programa o campo de afinidad"/><button class="btn-primary">Guardar</button></form></section>
+      <section class="mt-5"><div class="flex flex-wrap items-center justify-between gap-2"><div><h4 class="font-semibold">Documentos de respaldo</h4><p class="text-xs text-slate-500">CV, consulta SUNEDU, constancias y evidencia administrativa.</p></div><div class="flex gap-2"><select v-model="tipoDocumento" class="input-field w-32 text-xs"><option>CV</option><option>SUNEDU</option><option>Constancia</option><option>Otro</option></select><label class="btn-outline btn-sm cursor-pointer"><i class="pi pi-upload"></i>Cargar<input type="file" class="hidden" @change="cargarDocumento"/></label></div></div><div class="mt-2 space-y-2"><article v-for="d in detalle.documentos" :key="d.uuid" class="flex flex-wrap items-center gap-2 rounded border border-slate-200 p-3 text-xs dark:border-slate-700"><button class="min-w-0 flex-1 text-left" @click="abrirDocumento(d)"><strong class="block truncate">{{d.nombre_archivo}}</strong><span class="text-slate-500">{{d.tipo}} · {{fecha(d.fecha_carga)}} <template v-if="d.tiene_texto">· texto reconocido</template></span></button><select :value="d.estado_revision" class="input-field w-32 text-xs" @change="revisarDocumento(d,$event.target.value)"><option>Pendiente</option><option>Validado</option><option>Observado</option></select></article><p v-if="!detalle.documentos?.length" class="rounded bg-slate-100 p-4 text-xs text-slate-500 dark:bg-slate-900">Aún no hay documentos cargados.</p></div></section>
+      <section class="mt-5"><h4 class="font-semibold">Actividad registrada</h4><div class="mt-2 grid grid-cols-2 gap-2"><div v-for="a in detalle.actividades" :key="a.periodo+a.programa" class="rounded bg-slate-100 p-3 text-xs dark:bg-slate-800"><strong>{{a.periodo}}</strong><span class="block text-slate-500">{{a.registros}} registro(s)</span></div></div></section>
+    </aside></div>
 
-        <!-- Barra de carga laboral -->
-        <div class="mt-4">
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="text-[10px] text-slate-500">Carga laboral</span>
-            <span class="text-xs font-bold" :class="d.carga_actual >= d.max_tesis_permitidas ? 'text-red-400' : 'text-emerald-400'">
-              {{ d.carga_actual }} / {{ d.max_tesis_permitidas }}
-            </span>
-          </div>
-          <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
-            <div
-              class="h-full rounded-full transition-all duration-500"
-              :class="d.carga_actual >= d.max_tesis_permitidas ? 'bg-red-500' : d.carga_actual >= d.max_tesis_permitidas * 0.7 ? 'bg-amber-500' : 'bg-emerald-500'"
-              :style="{ width: `${Math.min(100, (d.carga_actual / d.max_tesis_permitidas) * 100)}%` }"
-            ></div>
-          </div>
-          <p v-if="!d.disponible" class="text-[10px] text-red-400 mt-1">Sin disponibilidad</p>
-          <p v-else class="text-[10px] text-emerald-400 mt-1">Disponible para asignación</p>
-        </div>
-      </div>
-
-      <div v-if="docentesFiltrados.length === 0" class="col-span-3 text-center py-12 text-slate-500">
-        No hay docentes registrados
-      </div>
-    </div>
-
-    <!-- Modal CRUD docente -->
-    <div v-if="modalAbierto" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" @click.self="modalAbierto = false">
-      <div class="card w-full max-w-md animate-slide-up">
-        <h3 class="section-title mb-5">{{ form.id_docente ? 'Editar docente' : 'Nuevo docente' }}</h3>
-        <div class="space-y-4">
-          <div>
-            <label class="input-label">DNI *</label>
-            <input v-model="form.dni" class="input-field font-mono" placeholder="12345678" />
-          </div>
-          <div>
-            <label class="input-label">Nombre Completo *</label>
-            <input v-model="form.nombre_completo" class="input-field" placeholder="Apellidos y Nombres" />
-          </div>
-          <div>
-            <label class="input-label">Especialidad</label>
-            <input v-model="form.especialidad" class="input-field" placeholder="Ej: Administración, Educación..." />
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="input-label">Tipo Contrato *</label>
-              <select v-model="form.tipo_contrato" class="input-field">
-                <option value="Semestral">Semestral</option>
-                <option value="Indeterminado">Indeterminado</option>
-                <option value="Tiempo Completo">Tiempo Completo</option>
-                <option value="Medio Tiempo">Medio Tiempo</option>
-              </select>
-            </div>
-            <div>
-              <label class="input-label">Estado</label>
-              <select v-model="form.estado" class="input-field">
-                <option value="Activo">Activo</option>
-                <option value="Inactivo">Inactivo</option>
-                <option value="De Licencia">De Licencia</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label class="input-label">Máx. Tesis Permitidas</label>
-            <input v-model.number="form.max_tesis" type="number" min="1" max="20" class="input-field" />
-          </div>
-        </div>
-        <div class="flex gap-3 mt-6">
-          <button @click="modalAbierto = false" class="btn-ghost flex-1 justify-center">Cancelar</button>
-          <button @click="guardar" :disabled="guardando" class="btn-primary flex-1 justify-center">
-            <svg v-if="guardando" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-            {{ guardando ? 'Guardando...' : form.id_docente ? 'Actualizar' : 'Crear Docente' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <div v-if="modalTramite" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" @click.self="modalTramite=false"><form class="card w-full max-w-lg" @submit.prevent="crearTramite"><header class="flex justify-between"><h3 class="section-title">Registrar trámite docente</h3><button type="button" class="icon-btn" @click="modalTramite=false"><i class="pi pi-times"></i></button></header><div class="mt-4 space-y-3"><select v-model="nuevo.id_docente" class="input-field"><option value="">Docente por identificar</option><option v-for="d in docentes" :key="d.id_docente" :value="d.id_docente">{{d.nombre_completo}}</option></select><div class="grid grid-cols-2 gap-3"><select v-model="nuevo.canal" class="input-field"><option>MPV</option><option>Fisico</option><option>Interno</option></select><input v-model="nuevo.referencia" class="input-field" placeholder="N.º ticket o referencia" /></div><input v-model="nuevo.tipo" required class="input-field" placeholder="Tipo de trámite" /><textarea v-model="nuevo.descripcion" class="input-field min-h-28" placeholder="Detalle y documentos recibidos"></textarea></div><div class="mt-5 flex justify-end gap-2"><button type="button" class="btn-outline" @click="modalTramite=false">Cancelar</button><button class="btn-primary">Registrar</button></div></form></div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import api from '../api.js'
-
-const docentes = ref([])
-const cargando = ref(true)
-const busqueda = ref('')
-const modalAbierto = ref(false)
-const guardando = ref(false)
-
-const form = ref({ id_docente: null, dni: '', nombre_completo: '', especialidad: '', tipo_contrato: 'Indeterminado', estado: 'Activo', max_tesis: 5 })
-
-const docentesFiltrados = computed(() => {
-  if (!busqueda.value.trim()) return docentes.value
-  const q = busqueda.value.toLowerCase()
-  return docentes.value.filter(d =>
-    d.nombre_completo.toLowerCase().includes(q) ||
-    (d.especialidad || '').toLowerCase().includes(q) ||
-    d.dni.includes(q)
-  )
-})
-
-function abrirForm(docente) {
-  if (docente) {
-    form.value = { id_docente: docente.id_docente, dni: docente.dni, nombre_completo: docente.nombre_completo, especialidad: docente.especialidad || '', tipo_contrato: docente.tipo_contrato, estado: docente.estado, max_tesis: docente.max_tesis_permitidas }
-  } else {
-    form.value = { id_docente: null, dni: '', nombre_completo: '', especialidad: '', tipo_contrato: 'Indeterminado', estado: 'Activo', max_tesis: 5 }
-  }
-  modalAbierto.value = true
-}
-
-async function guardar() {
-  guardando.value = true
-  try {
-    const params = {
-      nombre_completo: form.value.nombre_completo,
-      especialidad: form.value.especialidad || undefined,
-      tipo_contrato: form.value.tipo_contrato,
-      estado: form.value.estado,
-      max_tesis: form.value.max_tesis
-    }
-    if (form.value.id_docente) {
-      await api.put(`/docentes/${form.value.id_docente}`, null, { params })
-    } else {
-      await api.post('/docentes', null, { params: { ...params, dni: form.value.dni } })
-    }
-    modalAbierto.value = false
-    await cargar()
-  } catch (e) {
-    console.error(e)
-  } finally {
-    guardando.value = false
-  }
-}
-
-async function cargar() {
-  cargando.value = true
-  try {
-    const res = await api.get('/docentes')
-    docentes.value = res.data.data
-  } catch (e) {
-    console.error(e)
-  } finally {
-    cargando.value = false
-  }
-}
-
-onMounted(cargar)
+import {computed,onMounted,reactive,ref} from 'vue'; import api from '../api.js'
+const vista=ref('padron'),resumen=ref({}),docentes=ref([]),tramites=ref([]),detalle=ref(null),mensaje=ref(''),error=ref(false),pagina=ref(1),paginas=ref(1),total=ref(0),modalTramite=ref(false),filtroTramite=ref(''),mostrarPrograma=ref(false),tipoDocumento=ref('CV')
+const filtros=reactive({busqueda:'',nivel:'',programa:'',verificacion:'Padron_EPG'});const nuevo=reactive({id_docente:'',canal:'MPV',tipo:'',referencia:'',descripcion:''});const edicion=reactive({estado:'Pendiente',estado_docente:'Activo',especialidad:''});const programa=reactive({nivel:'Maestria',programa:''});const estadosTramite=['','Recibido','En_revision','Observado','Atendido','Archivado']
+const metricas=computed(()=>[{label:'Padrón actual',valor:resumen.value.padron_epg||0,accion:()=>{filtros.verificacion='Padron_EPG';buscar()}},{label:'Con SUNEDU',valor:resumen.value.con_sunedu||0},{label:'Afinidad Maestría',valor:resumen.value.maestria||0,accion:()=>{filtros.nivel='Maestria';buscar()}},{label:'Afinidad Doctorado',valor:resumen.value.doctorado||0,accion:()=>{filtros.nivel='Doctorado';buscar()}},{label:'Archivo histórico',valor:resumen.value.total||0,accion:()=>{filtros.verificacion='';buscar()}},{label:'Activos por revisar',valor:resumen.value.activos||0},{label:'Trámites pendientes',valor:resumen.value.tramites_pendientes||0,accion:()=>{vista.value='tramites';cargarTramites()}}])
+function mostrar(e){const d=e.response?.data?.detail;error.value=true;mensaje.value=typeof d==='string'?d:d?.mensaje||'No se pudo completar la acción.'}
+async function cargar(){try{const [r,s]=await Promise.all([api.get('/docentes',{params:{...filtros,page:pagina.value,per_page:40}}),api.get('/docentes/resumen')]);docentes.value=r.data.data;total.value=r.data.total;paginas.value=r.data.total_pages||1;resumen.value=s.data}catch(e){mostrar(e)}}
+function buscar(){pagina.value=1;cargar()} async function abrir(d){try{detalle.value=(await api.get(`/docentes/${d.id_docente}`)).data;Object.assign(edicion,{estado:detalle.value.estado_verificacion,estado_docente:detalle.value.estado,especialidad:detalle.value.especialidad||''})}catch(e){mostrar(e)}}
+async function guardarVerificacion(){try{detalle.value=(await api.put(`/docentes/${detalle.value.id_docente}/verificacion`,edicion)).data.docente;mensaje.value='Ficha docente actualizada.';error.value=false;await cargar()}catch(e){mostrar(e)}}
+async function agregarPrograma(){try{await api.post(`/docentes/${detalle.value.id_docente}/programas`,programa);programa.programa='';mostrarPrograma.value=false;await abrir(detalle.value);await cargar()}catch(e){mostrar(e)}}
+async function cargarDocumento(evento){const archivo=evento.target.files?.[0];if(!archivo)return;const form=new FormData();form.append('tipo',tipoDocumento.value);form.append('archivo',archivo);try{await api.post(`/docentes/${detalle.value.id_docente}/documentos`,form);mensaje.value='Documento incorporado a la ficha.';error.value=false;await abrir(detalle.value)}catch(e){mostrar(e)}finally{evento.target.value=''}}
+async function abrirDocumento(d){try{const r=await api.get(`/docente-documentos/${d.uuid}/archivo`,{responseType:'blob'});const url=URL.createObjectURL(r.data);window.open(url,'_blank','noopener');setTimeout(()=>URL.revokeObjectURL(url),60000)}catch(e){mostrar(e)}}
+async function revisarDocumento(d,estado){try{await api.put(`/docente-documentos/${d.uuid}/revision`,{estado});await abrir(detalle.value)}catch(e){mostrar(e)}}
+async function cargarTramites(){try{tramites.value=(await api.get('/docente-tramites',{params:{estado:filtroTramite.value||undefined}})).data.data}catch(e){mostrar(e)}}
+async function crearTramite(){try{await api.post('/docente-tramites',{...nuevo,id_docente:nuevo.id_docente?Number(nuevo.id_docente):null});modalTramite.value=false;mensaje.value='Trámite docente registrado.';error.value=false;Object.assign(nuevo,{id_docente:'',canal:'MPV',tipo:'',referencia:'',descripcion:''});await cargar();await cargarTramites()}catch(e){mostrar(e)}}
+async function cambiarEstado(t,estado){try{await api.put(`/docente-tramites/${t.uuid}/estado`,{estado,descripcion:t.descripcion||null});await cargarTramites();await cargar()}catch(e){mostrar(e)}} function fecha(v){return v?new Date(v).toLocaleDateString('es-PE'):'-'} onMounted(cargar)
 </script>
