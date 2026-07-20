@@ -60,7 +60,7 @@ def notificar_dictaminante(docente, expediente):
     <strong>{expediente.nombre_alumno}</strong>.</p>
     <p><strong>Titulo:</strong> {expediente.titulo_tesis or 'No registrado'}</p>
     <p>Ingrese al siguiente enlace seguro para aceptar o declinar la asignacion:</p>
-    <p><a href="{frontend_url}/#/dictaminante/{uuid_str}">Responder a la Asignacion</a></p>
+    <p><a href="{frontend_url}/q/{uuid_str}">Responder a la Asignacion</a></p>
     """
     return enviar_correo(docente.correo, asunto, cuerpo) if getattr(docente, "correo", None) else None
 

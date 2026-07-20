@@ -12,6 +12,9 @@ pandas
 # Auth JWT
 python-jose[cryptography]
 passlib[bcrypt]
+Authlib
+itsdangerous
+httpx
 
 # Fuzzy matching para sync histórico Excel
 thefuzz

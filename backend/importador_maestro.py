@@ -5,6 +5,7 @@ from datetime import datetime
 from database import SessionLocal, engine
 import models
 from extractor import detectar_paso
+from requisitos_catalogo import inicializar_requisitos_expediente
 
 def normalizar_texto(texto):
     if pd.isna(texto): return ""
@@ -196,6 +197,7 @@ def importar_expedientes_historicos(db, ruta_tramites, ruta_resoluciones):
             )
             db.add(expediente)
             db.flush() # Para obtener ID
+            inicializar_requisitos_expediente(db, expediente)
             
             db.add(models.HistorialMovimiento(
                 id_expediente=expediente.id_expediente,
@@ -235,13 +237,13 @@ if __name__ == "__main__":
         vaciar_tablas(db)
         
     # 2. Docentes
-    importar_docentes(db, "/opt/sistema_posgrado/DOCENTES.xlsx")
+    importar_docentes(db, "/opt/sistema_posgrado/data/input/catalogos/DOCENTES.xlsx")
     
     # 3. Expedientes Históricos (Ambos Excels)
     importar_expedientes_historicos(
         db,
-        "/opt/sistema_posgrado/TRAMITES ADMINISTRATIVOS ESTUDIANTES EPG 2026 (1).xlsx",
-        "/opt/sistema_posgrado/LISTA DE RESOLUCIONES EMITIDAS 2025 (2).xlsx"
+        "/opt/sistema_posgrado/data/input/catalogos/TRAMITES ADMINISTRATIVOS ESTUDIANTES EPG 2026 (1).xlsx",
+        "/opt/sistema_posgrado/data/input/catalogos/LISTA DE RESOLUCIONES EMITIDAS 2025 (2).xlsx"
     )
     
     db.close()

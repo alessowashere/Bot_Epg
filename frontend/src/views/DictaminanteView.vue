@@ -48,53 +48,71 @@ const responder = async (respuesta) => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
-    <div class="max-w-2xl w-full bg-gray-800 rounded-xl shadow-2xl p-8 border border-gray-700">
-      <div class="text-center mb-8">
-        <h1 class="text-3xl font-bold text-white mb-2">Sistema de Posgrado UAC</h1>
-        <p class="text-gray-400">Asignación de Jurado / Dictaminante</p>
-      </div>
+  <div class="min-h-screen bg-[#f4f7fb] px-4 py-8 sm:px-6">
+    <div class="mx-auto w-full max-w-2xl">
+      <header class="mb-5 flex items-center gap-3 rounded-md bg-[#102f63] px-5 py-4 text-white shadow-sm">
+        <div class="flex h-10 w-10 items-center justify-center rounded-md bg-white/10">
+          <img src="https://uandina.edu.pe/assets/logo-uandina-icono.svg" alt="Universidad Andina del Cusco" class="h-7 w-7 object-contain" />
+        </div>
+        <div>
+          <p class="text-[10px] font-bold uppercase tracking-wide text-cyan-200">Universidad Andina del Cusco</p>
+          <h1 class="text-base font-bold">Escuela de Posgrado</h1>
+        </div>
+      </header>
+
+      <main class="card shadow-sm">
+        <div class="mb-7 border-b border-slate-200 pb-5 dark:border-slate-800">
+          <p class="eyebrow">Respuesta externa segura</p>
+          <h2 class="text-2xl font-bold tracking-tight text-slate-950 dark:text-white">Asignacion de dictaminante</h2>
+          <p class="mt-1 text-sm text-slate-500">Revisa los datos y registra tu respuesta institucional.</p>
+        </div>
 
       <div v-if="cargando" class="flex justify-center py-12">
-        <i class="pi pi-spin pi-spinner text-4xl text-primary-500"></i>
+        <i class="pi pi-spin pi-spinner text-3xl text-sky-700"></i>
       </div>
 
       <div v-else-if="error" class="text-center py-12">
-        <i class="pi pi-exclamation-triangle text-6xl text-red-500 mb-4"></i>
-        <h2 class="text-xl text-white">{{ error }}</h2>
+        <i class="pi pi-exclamation-triangle mb-4 text-4xl text-red-500"></i>
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-white">{{ error }}</h2>
       </div>
 
       <div v-else-if="asignacion">
-        <div class="bg-gray-900 rounded-lg p-6 mb-8 border border-gray-700">
-          <p class="text-gray-400 text-sm mb-1">Docente Asignado:</p>
-          <p class="text-white font-semibold text-lg mb-4">{{ asignacion.docente }}</p>
-
-          <p class="text-gray-400 text-sm mb-1">Rol Designado:</p>
-          <p class="text-primary-400 font-semibold mb-4">{{ asignacion.rol }}</p>
-
-          <p class="text-gray-400 text-sm mb-1">Tesista / Estudiante:</p>
-          <p class="text-white mb-4">{{ asignacion.alumno }}</p>
-
-          <p class="text-gray-400 text-sm mb-1">Título de la Tesis / Proyecto:</p>
-          <p class="text-white">{{ asignacion.titulo_tesis || 'No especificado' }}</p>
+        <div class="surface-muted mb-7 grid gap-4 p-5 sm:grid-cols-2">
+          <div>
+            <p class="field-caption">Docente asignado</p>
+            <p class="mt-1 font-semibold text-slate-900 dark:text-white">{{ asignacion.docente }}</p>
+          </div>
+          <div>
+            <p class="field-caption">Rol designado</p>
+            <p class="mt-1 font-semibold text-sky-700 dark:text-cyan-300">{{ asignacion.rol }}</p>
+          </div>
+          <div>
+            <p class="field-caption">Tesista / estudiante</p>
+            <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ asignacion.alumno }}</p>
+          </div>
+          <div class="sm:col-span-2">
+            <p class="field-caption">Titulo de tesis / proyecto</p>
+            <p class="mt-1 text-sm leading-5 text-slate-700 dark:text-slate-200">{{ asignacion.titulo_tesis || 'No especificado' }}</p>
+          </div>
         </div>
 
-        <div v-if="asignacion.estado_actual !== 'Pendiente'" class="text-center bg-gray-900 p-6 rounded-lg border border-gray-700">
-          <i class="pi pi-check-circle text-5xl mb-4" :class="asignacion.estado_actual === 'Aceptado' ? 'text-green-500' : 'text-red-500'"></i>
-          <h3 class="text-2xl font-bold text-white mb-2">
+        <div v-if="asignacion.estado_actual !== 'Pendiente'" class="surface-muted p-6 text-center">
+          <i class="pi pi-check-circle mb-4 text-4xl" :class="asignacion.estado_actual === 'Aceptado' ? 'text-emerald-600' : 'text-red-500'"></i>
+          <h3 class="text-xl font-bold text-slate-900 dark:text-white">
             Cargo {{ asignacion.estado_actual }}
           </h3>
-          <p class="text-gray-400">Ya has respondido a esta asignación anteriormente.</p>
+          <p class="mt-1 text-sm text-slate-500">Ya has respondido a esta asignacion anteriormente.</p>
         </div>
 
         <div v-else>
           <div class="mb-6">
-            <label class="block text-gray-400 text-sm mb-2">Observaciones / Motivo (Obligatorio si declina):</label>
+            <label for="nota-dictaminante" class="input-label">Observaciones / motivo</label>
             <textarea 
+              id="nota-dictaminante"
               v-model="nota" 
-              class="w-full bg-gray-900 border border-gray-700 rounded-lg text-white p-3 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition-colors"
+              class="input-field resize-none"
               rows="3"
-              placeholder="Ingrese alguna nota u observación (opcional si acepta)..."
+              placeholder="Obligatorio si declinas el cargo."
             ></textarea>
           </div>
 
@@ -102,20 +120,21 @@ const responder = async (respuesta) => {
             <button 
               @click="responder('Rechazado')" 
               :disabled="enviando"
-              class="w-full py-3 px-4 bg-transparent border border-red-500 text-red-500 hover:bg-red-500 hover:text-white rounded-lg font-semibold transition-colors disabled:opacity-50"
+              class="btn-danger w-full justify-center"
             >
               <i class="pi pi-times mr-2"></i> Declino el cargo
             </button>
             <button 
               @click="responder('Aceptado')" 
               :disabled="enviando"
-              class="w-full py-3 px-4 bg-primary-600 hover:bg-primary-500 text-white rounded-lg font-semibold transition-colors shadow-lg disabled:opacity-50"
+              class="btn-primary w-full justify-center"
             >
               <i class="pi pi-check mr-2"></i> Acepto el cargo
             </button>
           </div>
         </div>
       </div>
+      </main>
     </div>
   </div>
 </template>

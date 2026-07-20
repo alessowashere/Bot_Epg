@@ -1,0 +1,10 @@
+[Unit]
+Description=Comprueba postproceso de identidades EPG-UAC
+
+[Timer]
+OnCalendar=*-*-* *:0/10:00
+Persistent=true
+Unit=epg-post-drive-identidades.service
+
+[Install]
+WantedBy=timers.target

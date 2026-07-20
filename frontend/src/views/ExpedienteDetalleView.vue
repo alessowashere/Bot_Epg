@@ -1,5 +1,5 @@
 <template>
-  <div class="p-6 space-y-5 animate-fade-in">
+  <div class="page-shell animate-fade-in">
     <div class="flex items-center gap-3">
       <button @click="$router.back()" class="btn-ghost btn-sm">
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
@@ -7,7 +7,8 @@
       </button>
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 flex-wrap">
-          <h2 class="text-xl font-bold text-white">Expediente #{{ exp?.id_expediente }}</h2>
+          <p class="eyebrow">Expediente oficial</p>
+          <h2 class="page-title">Expediente #{{ exp?.id_expediente }}</h2>
           <span v-if="exp" :class="badgeEstado(exp.estado_expediente)">{{ exp.estado_expediente }}</span>
           <span v-if="exp?.sub_estado" class="badge-observado">{{ exp.sub_estado }}</span>
           <span v-if="exp" :class="exp.grado_postula === 'Doctor' ? 'badge bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'badge bg-blue-500/20 text-blue-300 border border-blue-500/30'">{{ exp.grado_postula }}</span>
@@ -34,7 +35,51 @@
         </div>
       </div>
 
-      <div v-if="exp.estado_expediente !== 'Archivado_Graduado'" class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+      <section class="card">
+        <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+          <div>
+            <h3 class="text-sm font-semibold text-white">Requisitos del paso actual</h3>
+            <p class="text-xs text-slate-400 mt-1">Evidencia y validaci&oacute;n seg&uacute;n el anexo institucional vigente.</p>
+          </div>
+          <span v-if="exp.resumen_requisitos" :class="exp.resumen_requisitos.listo_para_revision ? 'badge-graduado' : 'badge-observado'">
+            {{ exp.resumen_requisitos.faltantes_obligatorios }} pendiente(s) · {{ exp.resumen_requisitos.observados }} observado(s)
+          </span>
+        </div>
+        <div v-if="requisitosPasoActual.length" class="space-y-3">
+          <div v-for="requisito in requisitosPasoActual" :key="requisito.id_expediente_requisito" class="rounded-lg border border-slate-700/70 bg-slate-800/40 p-3">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div class="min-w-0">
+                <p class="text-xs font-semibold text-white">{{ requisito.nombre }} <span v-if="requisito.obligatorio" class="text-red-300">*</span></p>
+                <p v-if="requisito.descripcion" class="mt-1 text-[11px] leading-4 text-slate-400">{{ requisito.descripcion }}</p>
+              </div>
+              <span :class="badgeRequisito(requisito.estado)">{{ requisito.estado }}</span>
+            </div>
+            <div v-if="puedeEditarRequisito" class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[150px_minmax(0,1fr)_auto]">
+              <select v-model="edicionesRequisito[requisito.id_expediente_requisito].estado" class="input-field text-xs">
+                <option v-for="estadoReq in estadosPermitidosRequisito" :key="estadoReq" :value="estadoReq">{{ estadoReq }}</option>
+              </select>
+              <input v-model="edicionesRequisito[requisito.id_expediente_requisito].evidencia_url" class="input-field text-xs" placeholder="URL o ruta de evidencia" />
+              <button type="button" class="btn-outline btn-sm justify-center" :disabled="procesando" @click="guardarRequisito(requisito)"><i class="pi pi-save"></i>Guardar</button>
+            </div>
+            <textarea v-if="puedeEditarRequisito" v-model="edicionesRequisito[requisito.id_expediente_requisito].observacion" class="input-field mt-2 resize-none text-xs" rows="2" placeholder="Observaci&oacute;n o detalle de la evidencia"></textarea>
+            <div v-else-if="requisito.evidencia_url || requisito.observacion" class="mt-2 text-[11px] text-slate-400">
+              <a v-if="requisito.evidencia_url" :href="requisito.evidencia_url" target="_blank" rel="noopener" class="text-indigo-300 hover:underline">Abrir evidencia</a>
+              <p v-if="requisito.observacion" class="mt-1">{{ requisito.observacion }}</p>
+            </div>
+          </div>
+        </div>
+        <p v-else class="text-xs text-slate-500">No hay requisitos configurados para este expediente. Un administrador puede inicializarlos.</p>
+      </section>
+
+      <ResolucionTramitePanel :expediente="exp" @actualizado="cargar" />
+
+      <div v-if="auth.isAdmin" class="flex justify-end">
+        <button type="button" class="btn-ghost btn-sm" @click="mostrarHerramientasLegacy = !mostrarHerramientasLegacy">
+          <i class="pi pi-wrench"></i> {{ mostrarHerramientasLegacy ? 'Ocultar herramientas heredadas' : 'Herramientas heredadas' }}
+        </button>
+      </div>
+
+      <div v-if="auth.isAdmin && mostrarHerramientasLegacy && exp.estado_expediente !== 'Archivado_Graduado'" class="grid grid-cols-1 xl:grid-cols-3 gap-5">
         <div class="xl:col-span-2 card">
           <h3 class="text-sm font-semibold text-white mb-4">Acciones del Expediente</h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -98,7 +143,7 @@
         </div>
       </div>
 
-      <div v-else class="card border-emerald-500/30 bg-emerald-950/20 text-center py-6">
+      <div v-if="exp.estado_expediente === 'Archivado_Graduado'" class="card border-emerald-500/30 bg-emerald-950/20 text-center py-6">
         <h3 class="text-lg font-bold text-emerald-300">Alumno Graduado</h3>
         <p class="text-slate-400 text-sm mt-1">Todos los pasos del flujo han sido completados.</p>
       </div>
@@ -167,7 +212,7 @@
               <div v-for="res in exp.resoluciones" :key="res.id_resolucion" class="flex items-center gap-3 p-2.5 rounded-lg bg-slate-800/40">
                 <div class="flex-1 min-w-0">
                   <p class="text-xs font-semibold text-white truncate">{{ res.tipo_documento }}</p>
-                  <a v-if="res.archivo_drive_url" :href="res.archivo_drive_url" target="_blank" class="text-[10px] text-indigo-400 truncate block">Abrir archivo</a>
+                  <button v-if="res.archivo_drive_url" type="button" class="mt-1 block max-w-full truncate text-left text-[10px] text-indigo-400 hover:underline" @click="abrirArchivoResolucion(res)">Abrir archivo</button>
                 </div>
                 <span :class="res.estado_firma === 'Firmado' ? 'badge-graduado' : 'badge-observado'">{{ res.estado_firma }}</span>
               </div>
@@ -197,6 +242,7 @@ import { useAuthStore } from '../stores/auth.js'
 import api from '../api.js'
 import StepTimeline from '../components/StepTimeline.vue'
 import TimelineRevisiones from '../components/TimelineRevisiones.vue'
+import ResolucionTramitePanel from '../components/ResolucionTramitePanel.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -215,12 +261,35 @@ const ticketNotificar = ref('')
 const nuevoTitulo = ref('')
 const notaTitulo = ref('')
 const dictaminantesSeleccionados = ref(['', '', ''])
+const edicionesRequisito = ref({})
+const mostrarHerramientasLegacy = ref(false)
+
+async function abrirArchivoResolucion(resolucion) {
+  if (!resolucion.archivo_historico) {
+    window.open(resolucion.archivo_drive_url, '_blank', 'noopener')
+    return
+  }
+  try {
+    const respuesta = await api.get(`/resoluciones/${resolucion.id_resolucion}/archivo`, { responseType: 'blob' })
+    const url = URL.createObjectURL(respuesta.data)
+    window.open(url, '_blank', 'noopener')
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } catch (error) {
+    alert(error.response?.data?.detail || 'No se pudo abrir la resolución histórica.')
+  }
+}
 
 const docentesDisponibles = computed(() => docentes.value.filter(d => d.disponible))
 const puedeAsignarDictaminantes = computed(() => {
   const ids = dictaminantesSeleccionados.value.filter(Boolean)
   return ids.length === 3 && new Set(ids).size === 3
 })
+const requisitosPasoActual = computed(() => (exp.value?.requisitos || []).filter(r => r.id_paso === exp.value?.id_paso_actual))
+const puedeValidarRequisito = computed(() => auth.isAdmin || auth.isSecretaria)
+const puedeEditarRequisito = computed(() => puedeValidarRequisito.value || auth.rol === 'Recepcion')
+const estadosPermitidosRequisito = computed(() => puedeValidarRequisito.value
+  ? ['Pendiente', 'Presentado', 'Validado', 'Observado', 'No_Aplica']
+  : ['Pendiente', 'Presentado'])
 
 function badgeEstado(estado) {
   const map = {
@@ -239,6 +308,10 @@ function badgeAceptacion(estado) {
     Rechazado: 'badge-error text-[10px]',
   }
   return map[estado] || 'badge text-[10px]'
+}
+
+function badgeRequisito(estado) {
+  return { Validado: 'badge-graduado', No_Aplica: 'badge-caduco', Observado: 'badge-error', Presentado: 'badge-proceso', Pendiente: 'badge-observado' }[estado] || 'badge'
 }
 
 function accionTextColor(accion) {
@@ -268,6 +341,11 @@ async function cargar() {
     const res = await api.get(`/expedientes/${route.params.uuid}`)
     exp.value = res.data
     nuevoTitulo.value = exp.value.titulo_tesis || ''
+    edicionesRequisito.value = Object.fromEntries((exp.value.requisitos || []).map(requisito => [requisito.id_expediente_requisito, {
+      estado: requisito.estado,
+      evidencia_url: requisito.evidencia_url || '',
+      observacion: requisito.observacion || '',
+    }]))
   } catch (e) {
     console.error(e)
   } finally {
@@ -290,6 +368,20 @@ async function ejecutar(nombre, fn) {
   } finally {
     procesando.value = null
   }
+}
+
+function guardarRequisito(requisito) {
+  const edicion = edicionesRequisito.value[requisito.id_expediente_requisito]
+  ejecutar(`requisito-${requisito.id_expediente_requisito}`, () => api.put(
+    `/expedientes/${route.params.uuid}/requisitos/${requisito.id_expediente_requisito}`,
+    {
+      estado: edicion.estado,
+      evidencia_url: edicion.evidencia_url || null,
+      evidencia_nombre: edicion.evidencia_url ? 'Evidencia registrada' : null,
+      fuente_evidencia: edicion.evidencia_url ? 'registro_manual' : null,
+      observacion: edicion.observacion || null,
+    },
+  ))
 }
 
 function aprobar() {

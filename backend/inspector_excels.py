@@ -33,5 +33,5 @@ def inspeccionar_excel(ruta):
         print(f"Error leyendo {ruta}: {e}")
 
 if __name__ == "__main__":
-    inspeccionar_excel("/opt/sistema_posgrado/TRAMITES ADMINISTRATIVOS ESTUDIANTES EPG 2026 (1).xlsx")
-    inspeccionar_excel("/opt/sistema_posgrado/LISTA DE RESOLUCIONES EMITIDAS 2025 (2).xlsx")
+    inspeccionar_excel("/opt/sistema_posgrado/data/input/catalogos/TRAMITES ADMINISTRATIVOS ESTUDIANTES EPG 2026 (1).xlsx")
+    inspeccionar_excel("/opt/sistema_posgrado/data/input/catalogos/LISTA DE RESOLUCIONES EMITIDAS 2025 (2).xlsx")

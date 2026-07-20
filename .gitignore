@@ -31,10 +31,17 @@ build/
 
 # ── Uploads (archivos pesados del servidor) ───
 uploads/
+uploads_privados/
 temp_adjuntos/
 backend/temp_adjuntos/
 *.zip
 data/resoluciones_2026_muestra/
+data/drive_evidencia/
+data/drive_resoluciones/
+data/private/
+data/reportes/
+data/tickets/
+data/historico/
 
 # ── Logs ─────────────────────────────────────
 *.log
@@ -51,6 +58,7 @@ yarn-debug.log*
 
 # ── Editor / OS ───────────────────────────────
 .vscode/*
+!.vscode/settings.json
 !.vscode/extensions.json
 .idea/
 .DS_Store
@@ -64,3 +72,6 @@ Thumbs.db
 # ── Base de datos / dumps ─────────────────────
 # (descomenta si no quieres subir el .sql con datos reales)
 # bd.sql
+backups/
+backup_antes_reconstruccion_*.sql
+archive/database/*.sql

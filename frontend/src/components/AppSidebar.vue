@@ -1,102 +1,229 @@
 <template>
-  <aside class="w-64 flex-shrink-0 bg-slate-900 border-r border-slate-700/50 flex flex-col h-full">
-    <!-- Logo / Header -->
-    <div class="p-5 border-b border-slate-700/50">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 flex-shrink-0">
-          <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0118 18a8.966 8.966 0 00-6 2.292m0-14.25v14.25" />
-          </svg>
-        </div>
-        <div>
-          <h1 class="text-sm font-bold text-white leading-tight">TesisTrack 7</h1>
-          <p class="text-xs text-slate-500">Posgrado UAC</p>
-        </div>
+  <aside
+    :class="[
+      'uac-sidebar fixed inset-y-0 left-0 z-50 flex flex-col border-r border-[#25477d] bg-[#102f63] text-white transition-[transform,width] duration-200 lg:static lg:z-auto lg:translate-x-0',
+      compact ? 'w-20 lg:w-20' : 'w-64',
+      open ? 'translate-x-0' : '-translate-x-full',
+    ]"
+  >
+    <div :class="['flex min-h-20 items-center gap-3 border-b border-white/15 py-4', compact ? 'justify-center px-2' : 'px-4']">
+      <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-white/10">
+        <img
+          src="/brand/uac-logo-white.png"
+          alt="UAC"
+          class="h-8 w-8 object-contain"
+        />
       </div>
+      <div v-if="!compact" class="min-w-0 flex-1">
+        <p class="text-[10px] font-semibold uppercase tracking-wide text-cyan-200">Universidad Andina del Cusco</p>
+        <h1 class="truncate text-[15px] font-bold">Escuela de Posgrado</h1>
+        <p class="text-xs text-blue-100/70">Seguimiento de tesis</p>
+      </div>
+      <button
+        type="button"
+        class="icon-btn border-white/15 text-white hover:bg-white/10 lg:hidden"
+        aria-label="Cerrar navegacion"
+        title="Cerrar navegacion"
+        @click="emit('close')"
+      >
+        <i class="pi pi-times"></i>
+      </button>
     </div>
 
-    <!-- Usuario activo -->
-    <div class="px-4 py-3 border-b border-slate-700/50">
-      <div class="flex items-center gap-2.5 p-2.5 rounded-lg bg-slate-800/60">
-        <div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+    <div :class="['border-b border-white/15 py-3', compact ? 'px-2' : 'px-4']">
+      <div :class="['flex items-center rounded-md bg-white/10 py-2.5', compact ? 'justify-center px-2' : 'gap-3 px-3']" :title="`${auth.nombre} · ${auth.rol}`">
+        <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-cyan-400 text-xs font-bold text-[#132e66]">
           {{ iniciales }}
         </div>
-        <div class="min-w-0">
-          <p class="text-xs font-semibold text-white truncate">{{ auth.nombre }}</p>
-          <span class="text-[10px] text-indigo-400 font-medium">{{ auth.rol }}</span>
+        <div v-if="!compact" class="min-w-0">
+          <p class="truncate text-xs font-semibold">{{ auth.nombre }}</p>
+          <p class="text-[11px] text-cyan-200">{{ auth.rol }}</p>
         </div>
       </div>
     </div>
 
-    <!-- Navegación -->
-    <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-      <p class="px-2 text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-2">Principal</p>
-
-      <router-link v-for="item in menuItems" :key="item.to" :to="item.to" v-slot="{ isActive, navigate }" custom>
-        <div
-          @click="navigate"
-          :class="['nav-item', isActive ? 'active' : '']"
+    <div v-if="!compact" class="relative border-b border-white/15 px-4 py-3">
+      <div class="relative">
+        <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-xs text-blue-100/60"></i>
+        <label for="busqueda-global" class="sr-only">Buscar en el sistema</label>
+        <input
+          id="busqueda-global"
+          v-model="busquedaGlobal"
+          class="w-full rounded-md border border-white/20 bg-white/10 py-2 pl-9 pr-9 text-xs text-white placeholder:text-blue-100/50 focus:border-cyan-300 focus:outline-none focus:ring-1 focus:ring-cyan-300"
+          placeholder="Buscar ticket, persona, tesis..."
+          @keyup.enter="buscarGlobal"
+          @keydown.esc="limpiarBusqueda"
+        />
+        <button
+          type="button"
+          class="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-blue-100 hover:bg-white/10 hover:text-white"
+          aria-label="Buscar"
+          title="Buscar"
+          @click="buscarGlobal"
         >
-          <span v-html="item.icon" class="w-5 h-5 flex-shrink-0 opacity-80"></span>
-          <span>{{ item.label }}</span>
-          <span v-if="item.badge" class="ml-auto bg-indigo-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-            {{ item.badge }}
+          <i :class="cargandoBusqueda ? 'pi pi-spin pi-spinner' : 'pi pi-arrow-right'" class="text-xs"></i>
+        </button>
+      </div>
+
+      <div v-if="resultadosGlobales.length || busquedaSinResultados" class="absolute left-4 right-4 top-[58px] z-50 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+        <button
+          v-for="resultado in resultadosGlobales"
+          :key="`${resultado.tipo}-${resultado.id}`"
+          type="button"
+          class="flex w-full items-start gap-2 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"
+          @click="abrirResultado(resultado)"
+        >
+          <i :class="iconoResultado(resultado.tipo)" class="pi mt-0.5 text-sm text-[#0973dc]"></i>
+          <span class="min-w-0">
+            <span class="block truncate text-xs font-semibold text-slate-900 dark:text-white">{{ resultado.titulo }}</span>
+            <span class="block truncate text-[11px] text-slate-500">{{ resultado.subtitulo || resultado.detalle }}</span>
           </span>
-        </div>
+        </button>
+        <p v-if="busquedaSinResultados" class="px-3 py-4 text-center text-xs text-slate-500">Sin coincidencias</p>
+      </div>
+    </div>
+
+    <nav :class="['flex-1 overflow-y-auto py-4', compact ? 'px-2' : 'px-3']">
+      <p v-if="!compact" class="mb-2 px-3 text-[10px] font-semibold uppercase text-blue-100/55">Operacion</p>
+      <router-link
+        v-for="item in menuItems"
+        :key="item.to"
+        :to="item.to"
+        v-slot="{ isActive, navigate }"
+        custom
+      >
+        <button
+          type="button"
+          :title="compact ? item.label : undefined"
+          :class="[
+            'mb-1 flex w-full items-center rounded-md py-2.5 text-left text-sm font-medium transition-colors',
+            compact ? 'justify-center px-2' : 'gap-3 px-3',
+            isActive ? 'bg-cyan-300 text-[#132e66]' : 'text-blue-50 hover:bg-white/10 hover:text-white',
+          ]"
+          @click="navegar(navigate)"
+        >
+          <i :class="item.icon" class="pi w-5 text-center text-base"></i>
+          <span v-if="!compact" class="flex-1">{{ item.label }}</span>
+        </button>
       </router-link>
 
       <template v-if="auth.isAdmin">
-        <p class="px-2 text-[10px] text-slate-500 uppercase tracking-widest font-semibold mt-4 mb-2">Administración</p>
+        <p v-if="!compact" class="mb-2 mt-5 px-3 text-[10px] font-semibold uppercase text-blue-100/55">Administracion</p>
         <router-link to="/usuarios" v-slot="{ isActive, navigate }" custom>
-          <div @click="navigate" :class="['nav-item', isActive ? 'active' : '']">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-            </svg>
-            <span>Usuarios</span>
-          </div>
+          <button
+            type="button"
+            :title="compact ? 'Usuarios' : undefined"
+            :class="[
+              'mb-1 flex w-full items-center rounded-md py-2.5 text-left text-sm font-medium transition-colors',
+              compact ? 'justify-center px-2' : 'gap-3 px-3',
+              isActive ? 'bg-cyan-300 text-[#132e66]' : 'text-blue-50 hover:bg-white/10 hover:text-white',
+            ]"
+            @click="navegar(navigate)"
+          >
+            <i class="pi pi-users w-5 text-center text-base"></i>
+            <span v-if="!compact">Usuarios</span>
+          </button>
+        </router-link>
+        <router-link to="/i11" v-slot="{ isActive, navigate }" custom>
+          <button
+            type="button"
+            title="Conciliación histórica"
+            :class="[
+              'mb-1 flex w-full items-center rounded-md py-2.5 text-left text-sm font-medium transition-colors',
+              compact ? 'justify-center px-2' : 'gap-3 px-3',
+              isActive ? 'bg-cyan-300 text-[#132e66]' : 'text-blue-50 hover:bg-white/10 hover:text-white',
+            ]"
+            @click="navegar(navigate)"
+          >
+            <i class="pi pi-sitemap w-5 text-center text-base"></i>
+            <span v-if="!compact">Conciliar históricos</span>
+          </button>
         </router-link>
       </template>
     </nav>
 
-    <!-- Footer / Cerrar sesión -->
-    <div class="p-3 border-t border-slate-700/50 space-y-1">
-      <!-- Toggle Dark/Light Mode -->
-      <button
-        @click="toggleTema"
-        class="nav-item w-full text-slate-400 hover:text-slate-200"
-        :title="isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
-      >
-        <!-- Ícono Sol (modo oscuro activo → clic cambia a claro) -->
-        <svg v-if="isDark" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
-        </svg>
-        <!-- Ícono Luna (modo claro activo → clic cambia a oscuro) -->
-        <svg v-else class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
-        </svg>
-        <span>{{ isDark ? 'Modo claro' : 'Modo oscuro' }}</span>
+    <div :class="['border-t border-white/15', compact ? 'p-2' : 'p-3']">
+      <button type="button" class="sidebar-action" :title="isDark ? 'Usar modo claro' : 'Usar modo oscuro'" @click="toggleTema">
+        <i :class="isDark ? 'pi-sun' : 'pi-moon'" class="pi w-5 text-center"></i>
+        <span v-if="!compact">{{ isDark ? 'Modo claro' : 'Modo oscuro' }}</span>
       </button>
-
-      <button @click="cerrarSesion" class="nav-item w-full text-red-400 hover:text-red-300 hover:bg-red-500/10">
-        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-        </svg>
-        <span>Cerrar sesión</span>
+      <button v-if="!auth.enVistaRol" type="button" class="sidebar-action" title="Cerrar las sesiones abiertas en otros dispositivos" @click="cerrarOtrasSesiones">
+        <i class="pi pi-desktop w-5 text-center"></i>
+        <span v-if="!compact">Cerrar otras sesiones</span>
+      </button>
+      <button type="button" class="sidebar-action text-red-100 hover:bg-red-500/20" @click="cerrarSesion">
+        <i class="pi pi-sign-out w-5 text-center"></i>
+        <span v-if="!compact">Cerrar sesion</span>
       </button>
     </div>
   </aside>
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
+import api from '../api.js'
 
+const props = defineProps({ open: { type: Boolean, default: false }, compact: { type: Boolean, default: false } })
+const emit = defineEmits(['close'])
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
+const busquedaGlobal = ref('')
+const resultadosGlobales = ref([])
+const cargandoBusqueda = ref(false)
+const busquedaSinResultados = ref(false)
+const isDark = ref(localStorage.getItem('epg_tema') === 'dark')
 
-// ── Dark / Light Mode ────────────────────────────────────────────────────────
-const isDark = ref(localStorage.getItem('epg_tema') !== 'light')
+const iniciales = computed(() => {
+  if (!auth.nombre) return '?'
+  return auth.nombre.split(' ').filter(Boolean).slice(0, 2).map(nombre => nombre[0]).join('').toUpperCase()
+})
+
+const menuItems = computed(() => {
+  const panel = { to: '/', label: 'Panel operativo', icon: 'pi-chart-bar' }
+  const guia = { to: '/i10', label: 'Guía de operación', icon: 'pi-compass' }
+  if (auth.isSecretaria) return [
+    panel,
+    { to: '/secretaria', label: 'Mesa de Secretaría', icon: 'pi-file-edit' },
+    { to: '/resoluciones', label: 'Control de resoluciones', icon: 'pi-book' },
+    { to: '/docentes', label: 'Docentes', icon: 'pi-id-card' },
+    { to: '/expedientes', label: 'Expedientes', icon: 'pi-folder-open' },
+    { to: '/estudiantes', label: 'Estudiantes', icon: 'pi-users' },
+    { to: '/reglas-resolucion', label: 'Reglas por paso', icon: 'pi-sliders-h' },
+    guia,
+  ]
+  if (auth.isDirectora) return [
+    panel,
+    { to: '/directora', label: 'Firma y aprobación', icon: 'pi-shield' },
+    { to: '/expedientes', label: 'Expedientes', icon: 'pi-folder-open' },
+    { to: '/estudiantes', label: 'Estudiantes', icon: 'pi-users' },
+    { to: '/resoluciones', label: 'Resoluciones', icon: 'pi-file-check' },
+    guia,
+  ]
+  if (!auth.isAdmin) return [
+    panel,
+    { to: '/tickets-pendientes', label: 'Mesa de tickets', icon: 'pi-list-check' },
+    { to: '/bandeja', label: 'Archivo de tickets', icon: 'pi-inbox' },
+    { to: '/expedientes', label: 'Expedientes', icon: 'pi-folder-open' },
+    { to: '/estudiantes', label: 'Estudiantes', icon: 'pi-users' },
+    guia,
+  ]
+  return [
+    panel,
+    { to: '/tickets-pendientes', label: 'Mesa de tickets', icon: 'pi-list-check' },
+    { to: '/bandeja', label: 'Archivo de tickets', icon: 'pi-inbox' },
+    { to: '/expedientes', label: 'Expedientes', icon: 'pi-folder-open' },
+    { to: '/estudiantes', label: 'Estudiantes', icon: 'pi-users' },
+    { to: '/secretaria', label: 'Mesa de Secretaría', icon: 'pi-file-edit' },
+    { to: '/directora', label: 'Firma y aprobación', icon: 'pi-shield' },
+    { to: '/resoluciones', label: 'Control de resoluciones', icon: 'pi-book' },
+    { to: '/docentes', label: 'Docentes', icon: 'pi-id-card' },
+    { to: '/reglas-resolucion', label: 'Reglas por paso', icon: 'pi-sliders-h' },
+    guia,
+  ]
+})
 
 function toggleTema() {
   isDark.value = !isDark.value
@@ -104,53 +231,77 @@ function toggleTema() {
   document.documentElement.classList.toggle('dark', isDark.value)
 }
 
-onMounted(() => {
-  document.documentElement.classList.toggle('dark', isDark.value)
-})
+function limpiarBusqueda() {
+  resultadosGlobales.value = []
+  busquedaSinResultados.value = false
+}
 
-// ── Sidebar utils ─────────────────────────────────────────────────────────────
-const iniciales = computed(() => {
-  if (!auth.nombre) return '?'
-  return auth.nombre.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
-})
-
-const menuItems = computed(() => {
-  const items = [
-    {
-      to: '/',
-      label: 'Dashboard',
-      icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>`
-    },
-    {
-      to: '/bandeja',
-      label: 'Bandeja de Tickets',
-      icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 00-2.15-1.588H6.911a2.25 2.25 0 00-2.15 1.588L2.35 13.177a2.25 2.25 0 00-.1.661z" /></svg>`
-    },
-    {
-      to: '/expedientes',
-      label: 'Expedientes',
-      icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" /></svg>`
-    },
-    {
-      to: '/docentes',
-      label: 'Docentes',
-      icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5" /></svg>`
-    },
-  ]
-
-  if (auth.isDirectora || auth.isAdmin) {
-    items.push({
-      to: '/directora',
-      label: 'Directora',
-      icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M12 3.75l7.5 3v5.25c0 4.125-2.438 7.875-7.5 9-5.062-1.125-7.5-4.875-7.5-9V6.75l7.5-3z" /></svg>`
-    })
+async function buscarGlobal() {
+  const q = busquedaGlobal.value.trim()
+  if (q.length < 2) {
+    limpiarBusqueda()
+    return
   }
+  cargandoBusqueda.value = true
+  busquedaSinResultados.value = false
+  try {
+    const res = await api.get('/buscar', { params: { q, limite: 5 } })
+    resultadosGlobales.value = [
+      ...(res.data.tickets || []),
+      ...(res.data.expedientes || []),
+      ...(res.data.resoluciones || []),
+      ...(res.data.docentes || []),
+      ...(res.data.adjuntos || []),
+    ].slice(0, 15)
+    busquedaSinResultados.value = resultadosGlobales.value.length === 0
+  } catch (error) {
+    resultadosGlobales.value = []
+    busquedaSinResultados.value = true
+  } finally {
+    cargandoBusqueda.value = false
+  }
+}
 
-  return items
-})
+function iconoResultado(tipo) {
+  return {
+    ticket: 'pi-ticket',
+    expediente: 'pi-folder',
+    resolucion: 'pi-file',
+    docente: 'pi-user',
+    adjunto: 'pi-paperclip',
+  }[tipo] || 'pi-search'
+}
 
-function cerrarSesion() {
+function abrirResultado(resultado) {
+  limpiarBusqueda()
+  busquedaGlobal.value = ''
+  router.push(resultado.ruta || '/')
+}
+
+function navegar(navigate) {
+  navigate()
+  emit('close')
+}
+
+async function cerrarOtrasSesiones() {
+  if (!confirm('Se cerrarán las otras sesiones abiertas de esta cuenta.')) return
+  try {
+    const respuesta = await api.post('/auth/cerrar-otras-sesiones')
+    alert(`${respuesta.data.sesiones_cerradas || 0} sesiones cerradas.`)
+  } catch (error) {
+    alert(error.response?.data?.detail || 'No se pudieron cerrar las otras sesiones.')
+  }
+}
+
+async function cerrarSesion() {
+  try {
+    await api.post('/auth/logout')
+  } catch {
+    // Si venció o ya fue revocada, se limpia de todos modos el acceso local.
+  }
   auth.logout()
   router.push('/login')
 }
+
+watch(() => route.fullPath, () => emit('close'))
 </script>

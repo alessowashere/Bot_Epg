@@ -30,12 +30,17 @@ from openpyxl import load_workbook
 
 from database import Base, SessionLocal, engine
 import models
+from nombres import quitar_tratamientos
+from identidad_academica import limpiar_programa_academico, normalizar_codigo_matricula
+from requisitos_catalogo import inicializar_requisitos_expediente
 
 
 ROOT = Path("/opt/sistema_posgrado")
-DEFAULT_ZIP = ROOT / "RESOLUCIONES FIRMADAS-20260707T150151Z-3-001.zip"
+INPUT_ROOT = ROOT / "data" / "input"
+DEFAULT_ZIP = INPUT_ROOT / "resoluciones" / "2026" / "RESOLUCIONES FIRMADAS-20260707T150151Z-3-001.zip"
 DEFAULT_OUT = ROOT / "data" / "resoluciones_2026"
-DEFAULT_DOCENTES = ROOT / "DOCENTES.xlsx"
+DEFAULT_DOCENTES = INPUT_ROOT / "catalogos" / "DOCENTES.xlsx"
+DEFAULT_RESOLUCIONES_EXCEL = INPUT_ROOT / "catalogos" / "LISTA DE RESOLUCIONES EMITIDAS 2025 (2).xlsx"
 
 MESES = {
     "enero": 1,
@@ -54,13 +59,13 @@ MESES = {
 }
 
 PASOS = {
-    1: ("Nombramiento de Asesor", ["nombramiento de asesor", "cambio de nombramiento de asesor"]),
-    2: ("Dictamen de Proyecto", ["dictamen de proyecto", "dictaminante de proyecto", "cambio de dictamen de proyecto"]),
-    3: ("Inscripcion del Proyecto", ["inscripcion de proyecto", "inscripción de proyecto", "inscrpcion de proyecto"]),
-    4: ("Declarado Apto", ["apto al grado", "declarar apto", "-apto-"]),
+    1: ("Nombramiento de Asesor", ["nombramiento de asesor", "nombramiento asesor", "cambio de nombramiento de asesor", "cambio de asesor"]),
+    2: ("Dictamen de Proyecto", ["dictamen de proyecto", "dictamen proyecto", "dictaminante de proyecto", "cambio de dictamen de proyecto", "cambio de dictaminante"]),
+    3: ("Inscripcion del Proyecto", ["inscripcion de proyecto", "inscripción de proyecto", "inscrpcion de proyecto", "inscripcion de tema", "inscripción de tema", "ampliacion de inscripcion", "ampliación de inscripción"]),
+    4: ("Declarado Apto", ["apto al grado", "declarar apto", "declarado apto", "-apto-", "apto para sustentacion"]),
     5: ("Dictamen de Tesis", ["dictamen de tesis", "dictaminante de tesis", "cambio de dictamen de tesis"]),
-    6: ("Sustentacion", ["fecha y hora", "sustentacion", "sustentación"]),
-    7: ("Tramite del Diploma", ["diploma", "grado academico", "grado académico"]),
+    6: ("Sustentacion", ["fecha y hora", "fijar fecha y hora", "sustentacion", "sustentación"]),
+    7: ("Tramite del Diploma", ["diploma", "grado academico", "grado académico", "elevar al vrac"]),
 }
 
 TITULOS_DOCENTE = r"(?:Dr\.?|Dra\.?|Mtro\.?|Mtra\.?|Mtr\.?|Mg\.?|Mag\.?|Mgt\.?)"
@@ -88,6 +93,18 @@ class ResolucionExtraida:
     texto_preview: str = ""
 
 
+def clave_resolucion(numero) -> str:
+    if numero in (None, ""):
+        return ""
+    texto = str(numero).strip()
+    try:
+        texto = str(int(float(texto)))
+    except ValueError:
+        match = re.search(r"\d+", texto)
+        texto = match.group(0) if match else ""
+    return texto.zfill(4) if texto else ""
+
+
 def normalizar_ascii(texto: str) -> str:
     texto = texto or ""
     texto = unicodedata.normalize("NFKD", texto)
@@ -100,10 +117,22 @@ def compactar(texto: str) -> str:
     return re.sub(r"\s+", " ", texto or "").strip()
 
 
+def limitar_texto(texto: str | None, limite: int) -> str | None:
+    if texto is None:
+        return None
+    texto = compactar(str(texto))
+    if not texto:
+        return None
+    return texto[:limite]
+
+
 def limpiar_nombre_persona(nombre: str) -> str:
-    nombre = normalizar_ascii(nombre)
+    nombre = normalizar_ascii(quitar_tratamientos(nombre))
     nombre = re.sub(rf"^({TITULOS_DOCENTE.replace('?:', '')})\s+", "", nombre, flags=re.I)
-    nombre = re.sub(r"\b(EL|LA|LOS|LAS|DOCENTES?|ESTUDIANTE|INTERESAD[AO]|BR|MTR|MTRA|MTRO|DRA|DR)\b", " ", nombre)
+    nombre = re.sub(r"\b(EL|LA|LOS|LAS|DOCENTES?|ESTUDIANTE|INTERESAD[AO]|BACH|BR|MGT|MG|MAG|MTR|MTRA|MTRO|DRA|DR)\b", " ", nombre)
+    nombre = re.sub(r"\b(CAMBIO|DICTAMEN|DICTAMINANTE|RECTIFICACION|NOMBRAMIENTO|ASESOR|FECHA|HORA|TESIS|PROYECTO|UAC|EPG)\b", " ", nombre)
+    nombre = re.sub(r"\bDE\s*MATR(?:ICULA)?\b.*$", " ", nombre)
+    nombre = re.sub(r"\bDE\s*$", " ", nombre)
     return re.sub(r"\s+", " ", nombre).strip()
 
 
@@ -128,6 +157,19 @@ def iter_pdfs_zip(zip_path: Path):
             yield info, zf.read(info.filename)
 
 
+@dataclass
+class ArchivoLocal:
+    """Adaptador mínimo para reutilizar el extractor ZIP con archivos de Drive."""
+    filename: str
+
+
+def iter_pdfs_directorio(directorio: Path):
+    """Lee PDFs recursivamente sin modificar los originales descargados."""
+    for ruta in sorted(directorio.rglob("*.pdf")):
+        if ruta.is_file():
+            yield ArchivoLocal(str(ruta.relative_to(directorio))), ruta.read_bytes()
+
+
 def extraer_texto_pdf(data: bytes, max_paginas: int) -> str:
     texto = []
     with pdfplumber.open(BytesIO(data)) as pdf:
@@ -137,19 +179,31 @@ def extraer_texto_pdf(data: bytes, max_paginas: int) -> str:
 
 
 def detectar_resolucion(texto: str, archivo: str) -> tuple[str, int | None]:
-    origen = f"{texto} {archivo}"
-    match = re.search(r"RESOLUCI[OÓ]N\s*N[°.º]?\s*0*([0-9]{1,5})\s*[-/ ]+\s*(20[0-9]{2})", origen, re.I)
-    if not match:
-        match = re.search(r"\bN[°.º]?\s*0*([0-9]{1,5})\s*[-/ ]+\s*(20[0-9]{2})", origen, re.I)
-    if not match:
-        return "", None
-    return match.group(1).zfill(4), int(match.group(2))
+    patrones = [
+        r"RESOLUCI[OÓ]N\s*[NW]\s*[\s.°º]*0*([0-9]{1,4})\s*[-/·–— ]+\s*(20[0-9]{2})",
+        r"\bN\s*[\s.°º]*0*([0-9]{1,4})\s*[-/·–— ]+\s*(20[0-9]{2})",
+    ]
+    # La cabecera debe prevalecer sobre resoluciones citadas en antecedentes.
+    for origen in ((texto or "")[:1800], archivo):
+        for patron in patrones:
+            match = re.search(patron, origen or "", re.I)
+            if match:
+                return match.group(1).zfill(4), int(match.group(2))
+    return "", None
 
 
 def detectar_fecha(texto: str) -> str:
+    texto_fecha = re.sub(r"(?<=\d)(?=[A-Za-zÁÉÍÓÚáéíóú])", " ", texto or "")
+    texto_fecha = re.sub(r"(?<=[A-Za-zÁÉÍÓÚáéíóú])(?=\d)", " ", texto_fecha)
+    texto_fecha = texto_fecha.replace("d e", "de")
+    meses = "|".join(MESES)
+    texto_fecha = re.sub(rf"de\s*({meses})\s*(?:de|del)?\s*(20\d{{2}})", r"de \1 de \2", texto_fecha, flags=re.I)
+    for mes in MESES:
+        patron_espaciado = r"\s*".join(re.escape(letra) for letra in mes)
+        texto_fecha = re.sub(patron_espaciado, mes, texto_fecha, flags=re.I)
     match = re.search(
-        r"Cusco,\s*(\d{1,2})\s+de\s+([a-záéíóú]+)\s+(?:de\s+)?(?:del\s+)?(20\d{2})",
-        texto,
+        r"Cus(?:co|ca|zco)\s*[,.:]?\s*(\d{1,2})\s*(?:de\s*)?([a-záéíóú]+)\s*(?:de\s*)?(?:del\s*)?(20\d{2})",
+        texto_fecha,
         re.I,
     )
     if not match:
@@ -159,13 +213,21 @@ def detectar_fecha(texto: str) -> str:
     anio = int(match.group(3))
     if not mes:
         return ""
-    return datetime(anio, mes, dia).date().isoformat()
+    try:
+        return datetime(anio, mes, dia).date().isoformat()
+    except ValueError:
+        return ""
 
 
-def detectar_paso_y_tipo(texto: str, archivo: str) -> tuple[int | None, str]:
+def detectar_paso_y_tipo(texto: str, archivo: str, tipo_excel: str = "") -> tuple[int | None, str]:
+    objetivo_excel = normalizar_ascii(tipo_excel)
     objetivo_archivo = normalizar_ascii(archivo)
-    objetivo_texto = normalizar_ascii(texto[:3500])
+    objetivo_texto = normalizar_ascii(texto[:6000])
     prioridad = [1, 2, 3, 5, 6, 4, 7]
+    for paso in prioridad:
+        nombre, claves = PASOS[paso]
+        if any(normalizar_ascii(clave) in objetivo_excel for clave in claves):
+            return paso, nombre
     for paso in prioridad:
         nombre, claves = PASOS[paso]
         if any(normalizar_ascii(clave) in objetivo_archivo for clave in claves):
@@ -179,28 +241,36 @@ def detectar_paso_y_tipo(texto: str, archivo: str) -> tuple[int | None, str]:
 
 def detectar_grado(texto: str, archivo: str) -> str:
     objetivo = normalizar_ascii(f"{texto[:7000]} {archivo}")
-    match = re.search(r"(?:PARA OPTAR|ASPIRANTE)\s+AL\s+GRADO\s+ACADEMICO\s+DE\s+([^.;]+)", objetivo)
+    match = re.search(r"(?:PARA\s*OPTAR|ASPIRANTE)\s*AL\s*GRADO\s*ACADEMICO\s*DE\s*([^.;]+)", objetivo)
     fragmento = match.group(1) if match else objetivo
     if re.search(r"\b(DOCTOR|DOCTORA|DOCTORADO)\b", fragmento):
         return "Doctor"
     if re.search(r"\b(MAESTRO|MAESTRA|MAESTRIA|MAGISTER)\b", fragmento):
         return "Maestro"
-    if "PROGRAMA DE DOCTORADO" in objetivo:
+    if re.search(r"PROGRAMA\s*DE\s*DOCTORADO", objetivo):
         return "Doctor"
-    if "PROGRAMA DE MAESTRIA" in objetivo:
+    if re.search(r"PROGRAMA\s*DE\s*MAESTRIA", objetivo):
         return "Maestro"
     return ""
 
 
 def detectar_programa(texto: str) -> str:
     patrones = [
-        r"programa de\s+((?:MAESTR[IÍ]A|DOCTORADO).*?)(?:\s+de la Escuela|\s*;|\s*,\s*de acuerdo|\.|\n)",
+        r"programa\s*de\s*((?:MAESTR[IÍ]A|DOCTORADO)\s*en\s*.*?)(?:de\s*la\s*Escuela|\s*;|\.|\n)",
+        r"programa\s*de\s*((?:MAESTR[IÍ]A|DOCTORADO).*?)(?:\s+de la Escuela|\s*;|\.|\n)",
         r"Grado Acad[eé]mico de\s+((?:MAESTR[OA]|DOCTOR[AO]).*?)(?:\s+habiendo|\s+de la Escuela|\s*;|\.|\n)",
     ]
     for patron in patrones:
         match = re.search(patron, texto, re.I)
         if match:
-            return compactar(match.group(1)).upper()
+            programa = limpiar_programa_academico(match.group(1))
+            programa = re.split(
+                r"\s*,?\s+DE LA UNIVERSIDAD\b|\s*,?\s+QUIEN SOLICITA\b|\s*,?\s+SOLICITAD[OA] POR\b|\s*,?\s+CUYAS FUNCIONES\b|\s*,?\s+DE CONFORMIDAD\b|\s*,?\s+DE ACUERDO\b|\s*,?\s+RESULTA\b|\s*,?\s+TRAS LA\b|DE LA ESCUELA\b|\s+DEL INTERESAD[OA]\b|\s+DEL BACH\b|\s+DE LA BR\b|\s+DEL BR\b|\s+DE LA MTR[AO]?\b|\s+DEL MTR[AO]?\b",
+                programa,
+                maxsplit=1,
+                flags=re.I,
+            )[0]
+            return limitar_texto(programa, 250) or ""
     return ""
 
 
@@ -210,38 +280,107 @@ def detectar_titulo(texto: str) -> str:
         r"Tesis Intitulada:\s*[\"“]([^\"”]+)[\"”]",
         r"tema de tesis intitulada:\s*[\"“]([^\"”]+)[\"”]",
     ]
+    encontrados = []
     for patron in patrones:
-        match = re.search(patron, texto, re.I)
-        if match:
-            return compactar(match.group(1)).upper()
+        for match in re.finditer(patron, texto, re.I):
+            encontrados.append((match.start(), compactar(match.group(1)).upper()))
+    if not encontrados:
+        return ""
+    return sorted(encontrados, key=lambda item: item[0])[-1][1]
+
+
+def cargar_catalogo_excel_2026(path: Path) -> dict[str, dict]:
+    if not path.exists():
+        return {}
+    wb = load_workbook(path, data_only=True, read_only=True)
+    if "RESOLUCIONES 2026" not in wb.sheetnames:
+        return {}
+    ws = wb["RESOLUCIONES 2026"]
+    catalogo = {}
+    for row in ws.iter_rows(min_row=3, values_only=True):
+        numero = clave_resolucion(row[1] if len(row) > 1 else None)
+        if not numero:
+            continue
+        tipo = compactar(str(row[5] or "")) if len(row) > 5 else ""
+        paso, tipo_normalizado = detectar_paso_y_tipo("", "", tipo)
+        catalogo[numero] = {
+            "estado_excel": compactar(str(row[0] or "")) if len(row) > 0 else "",
+            "resolucion_numero": numero,
+            "fecha_excel": row[2] if len(row) > 2 else None,
+            "nombre_excel": limpiar_nombre_persona(str(row[3] or "")) if len(row) > 3 and row[3] else "",
+            "codigo_excel": normalizar_codigo_matricula(row[4]) if len(row) > 4 and row[4] else "",
+            "tipo_excel": tipo,
+            "id_paso_excel": paso,
+            "tipo_paso_excel": tipo_normalizado,
+            "observacion_excel": compactar(str(row[6] or "")) if len(row) > 6 else "",
+        }
+    return catalogo
+
+
+def estado_excel_excluye(estado: str) -> bool:
+    estado_norm = normalizar_ascii(estado)
+    return "DEJAR SIN EFECTO" in estado_norm or estado_norm == "NO ENVIADO"
+
+
+def excel_row_compatible(excel_row: dict | None, nombre: str, codigo: str) -> bool:
+    if not excel_row:
+        return False
+    codigo_excel = excel_row.get("codigo_excel") or ""
+    nombre_excel = normalizar_ascii(excel_row.get("nombre_excel") or "")
+    nombre_pdf = normalizar_ascii(nombre or "")
+    if codigo and codigo_excel and codigo != codigo_excel:
+        return False
+    if nombre_pdf and nombre_excel and nombre_excel not in nombre_pdf and nombre_pdf not in nombre_excel:
+        return False
+    return True
+
+
+def fecha_excel_iso(excel_row: dict | None) -> str:
+    if not excel_row:
+        return ""
+    fecha = excel_row.get("fecha_excel")
+    if isinstance(fecha, datetime):
+        return fecha.date().isoformat()
     return ""
+
+
+def resoluciones_referidas(texto: str, numero_actual: str = "") -> list[str]:
+    refs = []
+    for match in re.finditer(r"RESOLUCI[OÓ]N\s*N\s*[\s.°º]*0*([0-9]{1,5})\s*[-/ ]+\s*(20[0-9]{2})", texto or "", re.I):
+        numero = match.group(1).zfill(4)
+        if numero and numero != numero_actual and numero not in refs:
+            refs.append(numero)
+    return refs
 
 
 def detectar_alumno_codigo(texto: str, archivo: str) -> tuple[str, str, str]:
     codigo = ""
     codigo_match = re.search(
-        r"c[oó]digo de\s+matr[ií]cula,?\s*(?:N\s*[.°º]?\s*[°º.]?\s*)?([A-Z0-9]{6,15})",
+        r"c[oó]digo(?:\s+de\s+matr[ií]cula)?[,]?\s*(?:N\s*[\s.°º]*)?([A-Z0-9]{8,16})",
         texto,
         re.I,
     )
-    if not codigo_match:
-        codigo_match = re.search(r"N\s*[.°º]?\s*[°º.]?\s*([0-9]{6,12}[A-Z]?)", texto, re.I)
     if codigo_match:
-        codigo = codigo_match.group(1).upper()
+        codigo = normalizar_codigo_matricula(codigo_match.group(1))
 
     expediente = ""
-    exp_match = re.search(r"expediente(?: administrativo)?\s*(?:N[°º.]?\s*)?#\s*([0-9]+)", texto, re.I)
+    exp_match = re.search(r"expediente\s*(?:administrativo)?\s*(?:N[°º.]?\s*)?#?\s*([0-9]+)", texto, re.I)
     if exp_match:
         expediente = exp_match.group(1)
 
     nombre = ""
+    bloque_visto = texto
+    match_visto = re.search(r"\bVISTO\b(?:\s*[:.-])?\s*(.*?)(?:\bCONSIDERANDO\b|\bCONSIDERANDO\.|\bQue,)", texto, re.I)
+    if match_visto:
+        bloque_visto = match_visto.group(1)
     patrones = [
-        r"presentad[oa]\s+por\s+(?:el|la)?\s*(?:Br\.?|Mtr\.?|Mtra\.?|Mtro\.?|Dr\.?|Dra\.?)?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+?)\s+con\s+c[oó]digo",
-        r"presentada por\s+(?:el|la)\s+estudiante\s+(?:Br\.?|Mtr\.?|Mtra\.?|Mtro\.?)?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+?),?\s+para optar",
-        r"-\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{8,80})\[R\]",
+        r"presentad[oa]\s*por\s*(?:el|la)?\s*(?:estudiante\s*)?(?:Bach\.?|Br\.?|Mgt\.?|Mg\.?|Mag\.?|Mtr\.?|Mtra\.?|Mtro\.?|Dr\.?|Dra\.?|Sr\.?|Sra\.?|Don|Doña)?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ\s]+?)(?:,?\s*con\s*c[oó]digo|,?\s+y\s+el\b|,?\s+quien\b|,?\s+participante\b|,?\s+en\s+representaci[oó]n\b|;|\\.)",
+        r"presentad[oa]\s+por\s+(?:el|la)?\s*estudiante\s+(?:Bach\.?|Br\.?|Mgt\.?|Mg\.?|Mag\.?|Mtr\.?|Mtra\.?|Mtro\.?)?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+?)(?:,|\s+con\s+c[oó]digo|\\.)",
+        r"correspondiente\s+a\s+(?:el|la)?\s*(?:Bach\.?|Br\.?|Mgt\.?|Mg\.?|Mag\.?|Mtr\.?|Mtra\.?|Mtro\.?|Dr\.?|Dra\.?)?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+?)(?:,|\s+y\b|;|\\.)",
+        r"presentada por\s+(?:el|la)\s+estudiante\s+(?:Bach\.?|Br\.?|Mgt\.?|Mg\.?|Mag\.?|Mtr\.?|Mtra\.?|Mtro\.?)?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+?),?\s+para optar",
     ]
     for patron in patrones:
-        match = re.search(patron, texto if "present" in patron else archivo, re.I)
+        match = re.search(patron, bloque_visto, re.I)
         if match:
             nombre = limpiar_nombre_persona(match.group(1))
             break
@@ -268,8 +407,7 @@ def detectar_docentes(texto: str) -> list[str]:
     return sorted(docentes)
 
 
-def evaluar_observaciones(item: ResolucionExtraida, texto: str) -> None:
-    objetivo = normalizar_ascii(f"{item.source_path} {texto[:5000]}")
+def evaluar_observaciones(item: ResolucionExtraida, texto: str, excel_row: dict | None = None) -> None:
     if not item.resolucion_numero:
         item.observaciones.append("sin_numero_resolucion")
     if not item.fecha_resolucion:
@@ -282,15 +420,39 @@ def evaluar_observaciones(item: ResolucionExtraida, texto: str) -> None:
         item.observaciones.append("sin_grado")
     if not item.id_paso_inferido:
         item.observaciones.append("sin_paso")
-    for clave in ("DEJAR SIN EFECTO", "RECTIFICACION", "RECTIFICACIÓN", "CAMBIO", "RENUNCIA", "AMPLIACION", "AMPLIACIÓN"):
-        if normalizar_ascii(clave) in objetivo:
-            item.observaciones.append(f"requiere_revision_{normalizar_ascii(clave).lower().replace(' ', '_')}")
-            break
+    if excel_row:
+        estado_excel = excel_row.get("estado_excel") or ""
+        if estado_excel and normalizar_ascii(estado_excel) != "ENVIADO":
+            item.observaciones.append(f"estado_excel_{normalizar_ascii(estado_excel).lower().replace(' ', '_')}")
     if item.observaciones:
         item.estado_revision = "Observado"
 
 
-def extraer_resolucion(info, data: bytes, max_paginas: int) -> ResolucionExtraida:
+def es_documento_resolucion(texto: str, archivo: str) -> bool:
+    """Evita que actas, oficios y compilados entren por mencionar un paso."""
+    inicio = normalizar_ascii((texto or "")[:1600])
+    nombre_archivo = normalizar_ascii(archivo or "")
+    encabezado = re.search(
+        r"\bRESOLUCION\s*[NW](?:RO)?\s*[.°º ]*0*[0-9]{1,4}\s*[-/ ]+\s*20[0-9]{2}",
+        inicio,
+        re.I,
+    )
+    documento_ajeno = re.search(
+        r"\b(?:ACTA\s+DE\s+(?:SUSTENTACION|SESION)|OFICIO|INFORME|MEMORANDUM)\b",
+        inicio[:700],
+        re.I,
+    )
+    if documento_ajeno and (not encabezado or documento_ajeno.start() < encabezado.start()):
+        return False
+    if encabezado:
+        return True
+    return bool(
+        re.search(r"RESOLUCION", nombre_archivo, re.I)
+        and re.search(r"0*[0-9]{1,5}\s*[-_/ ]+\s*20[0-9]{2}", nombre_archivo)
+    )
+
+
+def extraer_resolucion(info, data: bytes, max_paginas: int, catalogo_excel: dict[str, dict] | None = None) -> ResolucionExtraida | None:
     source_hash = hash_bytes(data)
     archivo = info.filename
     texto = ""
@@ -300,16 +462,43 @@ def extraer_resolucion(info, data: bytes, max_paginas: int) -> ResolucionExtraid
     except Exception as exc:
         observaciones.append(f"error_pdf:{exc}")
 
+    if not es_documento_resolucion(texto, archivo):
+        return None
+
     numero, anio = detectar_resolucion(texto, archivo)
-    paso, tipo = detectar_paso_y_tipo(texto, archivo)
     nombre, codigo, expediente = detectar_alumno_codigo(texto, archivo)
+    excel_row = (catalogo_excel or {}).get(numero)
+    excel_row = excel_row if excel_row_compatible(excel_row, nombre, codigo) else None
+    if excel_row and estado_excel_excluye(excel_row.get("estado_excel", "")):
+        return None
+
+    tipo_excel = excel_row.get("tipo_excel", "") if excel_row else ""
+    paso, tipo = detectar_paso_y_tipo(texto, archivo, tipo_excel)
+    if not paso:
+        return None
+
+    if excel_row:
+        nombre = nombre or excel_row.get("nombre_excel", "")
+        codigo = codigo or excel_row.get("codigo_excel", "")
+        if excel_row.get("id_paso_excel"):
+            paso = excel_row["id_paso_excel"]
+            tipo = excel_row["tipo_paso_excel"]
+    if catalogo_excel and (not nombre or not codigo):
+        for ref in resoluciones_referidas(texto, numero):
+            ref_row = catalogo_excel.get(ref)
+            if not ref_row:
+                continue
+            nombre = nombre or ref_row.get("nombre_excel", "")
+            codigo = codigo or ref_row.get("codigo_excel", "")
+            if nombre and codigo:
+                break
     item = ResolucionExtraida(
         source_path=archivo,
         source_hash=source_hash,
         archivo_normalizado=slug_archivo(archivo),
         resolucion_numero=numero,
         resolucion_anio=anio,
-        fecha_resolucion=detectar_fecha(texto),
+        fecha_resolucion=detectar_fecha(texto) or fecha_excel_iso(excel_row),
         expediente_admin=expediente,
         codigo_alumno=codigo,
         nombre_alumno=nombre,
@@ -320,10 +509,40 @@ def extraer_resolucion(info, data: bytes, max_paginas: int) -> ResolucionExtraid
         id_paso_inferido=paso,
         docentes_detectados=detectar_docentes(texto),
         observaciones=observaciones,
-        texto_preview=texto[:1800],
+        texto_preview=texto[:3000],
     )
-    evaluar_observaciones(item, texto)
+    evaluar_observaciones(item, texto, excel_row)
     return item
+
+
+def completar_por_codigo(items: list[ResolucionExtraida]) -> None:
+    por_codigo = {}
+    for item in items:
+        if item.codigo_alumno:
+            actual = por_codigo.setdefault(item.codigo_alumno, {})
+            for campo in ("grado_postula", "programa", "titulo_tesis", "nombre_alumno"):
+                valor = getattr(item, campo)
+                if valor and not actual.get(campo):
+                    actual[campo] = valor
+
+    for item in items:
+        if not item.codigo_alumno:
+            continue
+        fuente = por_codigo.get(item.codigo_alumno, {})
+        cambio = False
+        for campo in ("grado_postula", "programa", "titulo_tesis", "nombre_alumno"):
+            if not getattr(item, campo) and fuente.get(campo):
+                setattr(item, campo, fuente[campo])
+                cambio = True
+        if cambio:
+            item.observaciones = [
+                obs for obs in item.observaciones
+                if obs not in {"sin_grado", "sin_nombre_alumno"}
+            ]
+            if item.observaciones:
+                item.estado_revision = "Observado"
+            else:
+                item.estado_revision = "OK"
 
 
 def escribir_csv(items: list[ResolucionExtraida], ruta: Path) -> None:
@@ -378,17 +597,24 @@ def comando_inventario(args) -> None:
     print(f"Inventario: {csv_path}")
 
 
-def comando_extraer(args) -> None:
-    zip_path = Path(args.zip)
+def extraer_items(items_origen, args) -> None:
     out = Path(args.out)
     limite = args.limite
+    catalogo_excel = cargar_catalogo_excel_2026(Path(args.excel_resoluciones)) if args.excel_resoluciones else {}
     items = []
-    for idx, (info, data) in enumerate(iter_pdfs_zip(zip_path), start=1):
+    excluidos = 0
+    for idx, (info, data) in enumerate(items_origen, start=1):
         if limite and idx > limite:
             break
         if idx % 25 == 0:
             print(f"Procesando {idx} PDFs...")
-        items.append(extraer_resolucion(info, data, max_paginas=args.paginas))
+        item = extraer_resolucion(info, data, max_paginas=args.paginas, catalogo_excel=catalogo_excel)
+        if item is None:
+            excluidos += 1
+            continue
+        items.append(item)
+
+    completar_por_codigo(items)
 
     csv_path = out / "resoluciones_extraidas.csv"
     jsonl_path = out / "resoluciones_extraidas.jsonl"
@@ -396,9 +622,21 @@ def comando_extraer(args) -> None:
     escribir_jsonl(items, jsonl_path)
     total_obs = sum(1 for item in items if item.estado_revision == "Observado")
     print(f"Extraidos: {len(items)}")
+    print(f"Excluidos: {excluidos}")
     print(f"Observados: {total_obs}")
     print(f"CSV: {csv_path}")
     print(f"JSONL: {jsonl_path}")
+
+
+def comando_extraer(args) -> None:
+    extraer_items(iter_pdfs_zip(Path(args.zip)), args)
+
+
+def comando_extraer_directorio(args) -> None:
+    directorio = Path(args.directorio)
+    if not directorio.is_dir():
+        raise FileNotFoundError(f"No existe el directorio de PDFs: {directorio}")
+    extraer_items(iter_pdfs_directorio(directorio), args)
 
 
 def cargar_jsonl(ruta: Path) -> list[dict]:
@@ -416,34 +654,83 @@ def parse_fecha(fecha: str):
     return datetime.strptime(fecha, "%Y-%m-%d")
 
 
+def fecha_vencimiento_resolucion(fecha: datetime | None) -> datetime | None:
+    """Toda resolución de los siete pasos tiene vigencia de 24 meses.
+
+    `replace` conserva el día/mes y resuelve correctamente el caso excepcional
+    del 29 de febrero al 28 de febrero del segundo año.
+    """
+    if not fecha:
+        return None
+    try:
+        return fecha.replace(year=fecha.year + 2)
+    except ValueError:
+        return fecha.replace(year=fecha.year + 2, month=2, day=28)
+
+
+def actualizar_vigencia_expediente(db, expediente) -> bool:
+    """Marca vencido solo el paso vigente; P7 queda como expediente concluido."""
+    if expediente.id_paso_actual == 7:
+        expediente.estado_expediente = "Archivado_Graduado"
+        expediente.sub_estado = "Concluido con resolución de grado"
+        return False
+
+    ultima = (
+        db.query(models.ResolucionFirma)
+        .filter(
+            models.ResolucionFirma.id_expediente == expediente.id_expediente,
+            models.ResolucionFirma.id_paso_asociado == expediente.id_paso_actual,
+            models.ResolucionFirma.estado_firma == "Firmado",
+        )
+        .order_by(models.ResolucionFirma.fecha_firma.desc())
+        .first()
+    )
+    vencimiento = fecha_vencimiento_resolucion(ultima.fecha_firma if ultima else None)
+    if vencimiento and datetime.utcnow() >= vencimiento:
+        expediente.estado_expediente = "Caduco"
+        expediente.sub_estado = f"Paso {expediente.id_paso_actual} vencido el {vencimiento.date().isoformat()}"
+        return True
+    if expediente.estado_expediente == "Caduco":
+        expediente.estado_expediente = "En Proceso"
+        expediente.sub_estado = None
+    return False
+
+
 def comando_staging(args) -> None:
     Base.metadata.create_all(bind=engine)
     items = cargar_jsonl(Path(args.jsonl))
     db = SessionLocal()
     nuevos = 0
     actualizados = 0
+    duplicados_lote = 0
+    hashes_lote = set()
     try:
         for row in items:
+            source_hash = row["source_hash"]
+            if source_hash in hashes_lote:
+                duplicados_lote += 1
+                continue
+            hashes_lote.add(source_hash)
             existente = db.query(models.ResolucionDocumento).filter(
-                models.ResolucionDocumento.source_hash == row["source_hash"]
+                models.ResolucionDocumento.source_hash == source_hash
             ).first()
             estado = "OK" if row.get("estado_revision") == "OK" else "Observado"
             payload = {
-                "source_path": row.get("source_path"),
-                "archivo_normalizado": row.get("archivo_normalizado"),
-                "resolucion_numero": row.get("resolucion_numero") or None,
+                "source_path": limitar_texto(row.get("source_path"), 500),
+                "archivo_normalizado": limitar_texto(row.get("archivo_normalizado"), 255),
+                "resolucion_numero": limitar_texto(row.get("resolucion_numero"), 30),
                 "resolucion_anio": row.get("resolucion_anio"),
                 "fecha_resolucion": parse_fecha(row.get("fecha_resolucion") or ""),
-                "expediente_admin": row.get("expediente_admin") or None,
-                "codigo_alumno": row.get("codigo_alumno") or None,
-                "nombre_alumno": row.get("nombre_alumno") or None,
+                "expediente_admin": limitar_texto(row.get("expediente_admin"), 30),
+                "codigo_alumno": limitar_texto(row.get("codigo_alumno"), 30),
+                "nombre_alumno": limitar_texto(row.get("nombre_alumno"), 200),
                 "grado_postula": row.get("grado_postula") or None,
-                "programa": row.get("programa") or None,
+                "programa": limitar_texto(detectar_programa(row.get("texto_preview") or "") or row.get("programa"), 250),
                 "titulo_tesis": row.get("titulo_tesis") or None,
-                "tipo_resolucion": row.get("tipo_resolucion") or None,
+                "tipo_resolucion": limitar_texto(row.get("tipo_resolucion"), 120),
                 "id_paso_inferido": row.get("id_paso_inferido"),
                 "docentes_detectados": row.get("docentes_detectados") or [],
-                "texto_preview": row.get("texto_preview"),
+                "texto_preview": row.get("texto_preview") or None,
                 "estado_revision": estado,
                 "observaciones": " | ".join(row.get("observaciones") or []),
             }
@@ -452,13 +739,16 @@ def comando_staging(args) -> None:
                     setattr(existente, key, value)
                 actualizados += 1
             else:
-                db.add(models.ResolucionDocumento(source_hash=row["source_hash"], **payload))
+                db.add(models.ResolucionDocumento(source_hash=source_hash, **payload))
                 nuevos += 1
         if args.aplicar:
             db.commit()
         else:
             db.rollback()
-        print(f"Staging {'aplicado' if args.aplicar else 'simulado'}: {nuevos} nuevos, {actualizados} actualizados")
+        print(
+            f"Staging {'aplicado' if args.aplicar else 'simulado'}: "
+            f"{nuevos} nuevos, {actualizados} actualizados, {duplicados_lote} duplicados en lote omitidos"
+        )
     finally:
         db.close()
 
@@ -514,11 +804,20 @@ def comando_importar_docentes(args) -> None:
 
 
 def comando_importar_expedientes(args) -> None:
+    if args.aplicar:
+        print(
+            "Importación omitida de forma segura: la agrupación histórica por código no es segura. "
+            "Primero generar y revisar el catálogo de identidades académicas; usar después "
+            "el reconstruidor compuesto, no este importador legado."
+        )
+        return
     db = SessionLocal()
     creados = 0
     actualizados = 0
     observados = 0
     resoluciones = 0
+    caducos = 0
+    expedientes_tocados = {}
     try:
         query = db.query(models.ResolucionDocumento).filter(models.ResolucionDocumento.estado_revision == "OK")
         for doc in query.order_by(models.ResolucionDocumento.fecha_resolucion, models.ResolucionDocumento.resolucion_numero).all():
@@ -536,6 +835,7 @@ def comando_importar_expedientes(args) -> None:
                     codigo_alumno=doc.codigo_alumno,
                     nombre_alumno=doc.nombre_alumno,
                     grado_postula=doc.grado_postula,
+                    programa=doc.programa or None,
                     titulo_tesis=doc.titulo_tesis,
                     id_paso_actual=doc.id_paso_inferido,
                     estado_expediente="En Proceso",
@@ -543,6 +843,7 @@ def comando_importar_expedientes(args) -> None:
                 )
                 db.add(expediente)
                 db.flush()
+                inicializar_requisitos_expediente(db, expediente)
                 db.add(models.HistorialMovimiento(
                     id_expediente=expediente.id_expediente,
                     id_paso=doc.id_paso_inferido,
@@ -554,13 +855,16 @@ def comando_importar_expedientes(args) -> None:
             else:
                 expediente.nombre_alumno = doc.nombre_alumno
                 expediente.grado_postula = doc.grado_postula
+                if doc.programa:
+                    expediente.programa = doc.programa
                 if doc.titulo_tesis:
                     expediente.titulo_tesis = doc.titulo_tesis
                 if doc.id_paso_inferido and doc.id_paso_inferido > expediente.id_paso_actual:
                     expediente.id_paso_actual = doc.id_paso_inferido
                 actualizados += 1
+            expedientes_tocados[expediente.id_expediente] = expediente
 
-            etiqueta = f"Resolucion {doc.resolucion_numero}-{doc.resolucion_anio} - {doc.tipo_resolucion}"
+            etiqueta = f"Resolucion {doc.resolucion_numero}-{doc.resolucion_anio} - {doc.tipo_resolucion}"[:100]
             existe = db.query(models.ResolucionFirma).filter(
                 models.ResolucionFirma.id_expediente == expediente.id_expediente,
                 models.ResolucionFirma.tipo_documento == etiqueta,
@@ -574,9 +878,20 @@ def comando_importar_expedientes(args) -> None:
                     estado_firma="Firmado",
                     fecha_firma=doc.fecha_resolucion or datetime.utcnow(),
                 ))
+                db.add(models.HistorialMovimiento(
+                    id_expediente=expediente.id_expediente,
+                    id_paso=doc.id_paso_inferido,
+                    accion="Resolucion_Cargada",
+                    nota=f"{etiqueta} | fuente: {doc.source_path}",
+                    usuario_nombre="Sistema (Resoluciones PDF)",
+                    fecha_movimiento=doc.fecha_resolucion or datetime.utcnow(),
+                ))
                 resoluciones += 1
 
             doc.estado_revision = "Importado"
+
+        for expediente in expedientes_tocados.values():
+            caducos += 1 if actualizar_vigencia_expediente(db, expediente) else 0
 
         if args.aplicar:
             db.commit()
@@ -584,7 +899,7 @@ def comando_importar_expedientes(args) -> None:
             db.rollback()
         print(
             f"Expedientes {'aplicados' if args.aplicar else 'simulados'}: "
-            f"{creados} creados, {actualizados} actualizados, {resoluciones} resoluciones, {observados} observados"
+            f"{creados} creados, {actualizados} actualizados, {resoluciones} resoluciones, {observados} observados, {caducos} caducos"
         )
     finally:
         db.close()
@@ -703,9 +1018,18 @@ def build_parser():
     p = sub.add_parser("extraer")
     p.add_argument("--zip", default=str(DEFAULT_ZIP))
     p.add_argument("--out", default=str(DEFAULT_OUT))
-    p.add_argument("--paginas", type=int, default=2)
+    p.add_argument("--paginas", type=int, default=4)
     p.add_argument("--limite", type=int, default=0)
+    p.add_argument("--excel-resoluciones", default=str(DEFAULT_RESOLUCIONES_EXCEL))
     p.set_defaults(func=comando_extraer)
+
+    p = sub.add_parser("extraer-directorio", help="Extrae PDFs descargados desde una carpeta, por ejemplo Google Drive")
+    p.add_argument("--directorio", required=True)
+    p.add_argument("--out", default=str(ROOT / "data" / "drive_resoluciones" / "extraccion"))
+    p.add_argument("--paginas", type=int, default=6)
+    p.add_argument("--limite", type=int, default=0)
+    p.add_argument("--excel-resoluciones", default=str(DEFAULT_RESOLUCIONES_EXCEL))
+    p.set_defaults(func=comando_extraer_directorio)
 
     p = sub.add_parser("staging")
     p.add_argument("--jsonl", default=str(DEFAULT_OUT / "resoluciones_extraidas.jsonl"))

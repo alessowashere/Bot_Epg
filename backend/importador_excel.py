@@ -6,6 +6,7 @@ from openpyxl import load_workbook
 
 import models
 from extractor import detectar_paso
+from requisitos_catalogo import inicializar_requisitos_expediente
 
 
 ALIAS_COLUMNAS = {
@@ -150,6 +151,7 @@ def importar_excel_expedientes(db, file_obj, usuario_nombre="Sistema"):
                 )
                 db.add(expediente)
                 db.flush()
+                inicializar_requisitos_expediente(db, expediente)
                 db.add(
                     models.HistorialMovimiento(
                         id_expediente=expediente.id_expediente,
