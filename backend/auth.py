@@ -13,12 +13,36 @@ import bcrypt
 from sqlalchemy.orm import Session
 
 import models
-from database import SessionLocal
+from database import SessionLocal, leer_env_local
 
 # ── Configuración ──────────────────────────────────────────────────────────────
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "CAMBIA_ESTO_EN_PRODUCCION_CLAVE_INSEGURA")
-ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))  # 8 horas
+CLAVE_INSEGURA = "CAMBIA_ESTO_EN_PRODUCCION_CLAVE_INSEGURA"
+
+
+def configuracion(clave: str, defecto: str | None = None) -> str | None:
+    return os.getenv(clave) or leer_env_local(clave) or defecto
+
+
+SECRET_KEY = configuracion("JWT_SECRET_KEY", CLAVE_INSEGURA)
+ALGORITHM = configuracion("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(configuracion("JWT_EXPIRE_MINUTES", "480"))
+ENTORNO = (configuracion("EPG_ENVIRONMENT", "production") or "production").lower()
+LEGACY_PASSWORD_LOGIN_ENABLED = (
+    configuracion("EPG_LEGACY_PASSWORD_LOGIN_ENABLED", "true") or "true"
+).strip().lower() == "true"
+LEGACY_PASSWORD_RETIREMENT_DATE = configuracion("EPG_LEGACY_PASSWORD_RETIREMENT_DATE", "sin_fecha_definida")
+
+
+def validar_configuracion_jwt() -> None:
+    if ENTORNO in {"production", "produccion"} and (
+        not SECRET_KEY or SECRET_KEY == CLAVE_INSEGURA or len(SECRET_KEY) < 32
+    ):
+        raise RuntimeError(
+            "JWT_SECRET_KEY seguro es obligatorio en produccion; configuralo fuera del repositorio."
+        )
+
+
+validar_configuracion_jwt()
 
 # ── Herramientas criptográficas ────────────────────────────────────────────────
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")

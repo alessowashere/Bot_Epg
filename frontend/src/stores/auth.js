@@ -12,7 +12,10 @@ export const useAuthStore = defineStore('auth', () => {
   const correo = computed(() => usuario.value?.correo || '')
   const isAdmin = computed(() => rol.value === 'Administrador')
   const isDirectora = computed(() => rol.value === 'Directora')
+  const isSecretaria = computed(() => rol.value === 'Secretaria_Academica')
   const isDictaminante = computed(() => rol.value === 'Dictaminante')
+  const requiereCambioPassword = computed(() => Boolean(usuario.value?.debe_cambiar_password))
+  const enVistaRol = computed(() => Boolean(usuario.value?.modo_vista_rol))
 
   function login(loginResponse) {
     // loginResponse incluye: access_token, id_usuario, nombre_completo, correo, rol
@@ -27,7 +30,35 @@ export const useAuthStore = defineStore('auth', () => {
     usuario.value = null
     token.value = null
     localStorage.removeItem('epg_usuario')
+    sessionStorage.removeItem('epg_sesion_admin_original')
     localStorage.removeItem('epg_token')
+  }
+
+  function actualizarPerfil(cambios) {
+    if (!usuario.value) return
+    usuario.value = { ...usuario.value, ...cambios }
+    localStorage.setItem('epg_usuario', JSON.stringify(usuario.value))
+  }
+
+  function entrarVistaRol(respuesta) {
+    if (!enVistaRol.value) {
+      sessionStorage.setItem('epg_sesion_admin_original', JSON.stringify({
+        token: token.value,
+        usuario: usuario.value,
+      }))
+    }
+    login(respuesta)
+  }
+
+  function salirVistaRol() {
+    const original = sessionStorage.getItem('epg_sesion_admin_original')
+    if (!original) return logout()
+    const sesion = JSON.parse(original)
+    usuario.value = sesion.usuario
+    token.value = sesion.token
+    localStorage.setItem('epg_usuario', JSON.stringify(sesion.usuario))
+    localStorage.setItem('epg_token', sesion.token)
+    sessionStorage.removeItem('epg_sesion_admin_original')
   }
 
   return {
@@ -39,8 +70,14 @@ export const useAuthStore = defineStore('auth', () => {
     correo,
     isAdmin,
     isDirectora,
+    isSecretaria,
     isDictaminante,
+    requiereCambioPassword,
+    enVistaRol,
     login,
     logout,
+    actualizarPerfil,
+    entrarVistaRol,
+    salirVistaRol,
   }
 })

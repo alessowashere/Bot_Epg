@@ -1,118 +1,65 @@
 <template>
-  <div class="min-h-screen bg-slate-950 flex items-center justify-center relative overflow-hidden">
-    <!-- Fondo decorativo animado -->
-    <div class="absolute inset-0 overflow-hidden pointer-events-none">
-      <div class="absolute -top-40 -right-40 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl animate-pulse-slow"></div>
-      <div class="absolute -bottom-40 -left-40 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl animate-pulse-slow" style="animation-delay: 1.5s"></div>
-      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-900/5 rounded-full blur-3xl"></div>
-    </div>
-
-    <!-- Card de login -->
-    <div class="relative z-10 w-full max-w-md mx-4 animate-fade-in">
-      <!-- Header con logo UAC -->
-      <div class="text-center mb-8">
-        <div class="inline-flex flex-col items-center justify-center mb-4 gap-2">
-          <!-- Logo UAC / ícono institucional -->
-          <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-2xl shadow-indigo-500/40 flex items-center justify-center">
-            <svg class="w-11 h-11 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0118 18a8.966 8.966 0 00-6 2.292m0-14.25v14.25" />
-            </svg>
+  <div class="min-h-screen bg-[#e9eef5] p-3 sm:p-5 lg:p-7">
+    <div class="mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-[1500px] overflow-hidden rounded-lg border border-slate-300/80 bg-white shadow-[0_24px_70px_rgba(15,35,66,0.16)] sm:min-h-[calc(100vh-2.5rem)] xl:grid-cols-[minmax(440px,1.08fr)_minmax(520px,0.92fr)]">
+      <section class="login-visual relative hidden min-h-full flex-col justify-between overflow-hidden p-10 text-white xl:flex xl:p-12">
+        <div class="login-visual-overlay absolute inset-0"></div>
+        <div class="relative flex items-center gap-4">
+          <div class="flex h-14 w-14 items-center justify-center rounded-lg border border-white/25 bg-white/10">
+            <img src="/brand/uac-logo-white.png" alt="Universidad Andina del Cusco" class="h-10 w-10 object-contain" />
           </div>
           <div>
-            <h1 class="text-2xl font-bold text-white leading-tight">Escuela de Posgrado</h1>
-            <p class="text-slate-400 text-sm mt-0.5">Universidad Andina del Cusco</p>
+            <p class="text-xs font-semibold uppercase tracking-[0.12em] text-white/75">Universidad Andina del Cusco</p>
+            <p class="mt-1 text-xl font-semibold">Escuela de Posgrado</p>
           </div>
         </div>
-        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20">
-          <div class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></div>
-          <span class="text-xs text-indigo-300 font-medium">Sistema de Gestión de Tesis — TesisTrack</span>
+        <div class="relative max-w-xl pb-6">
+          <div class="mb-6 h-1 w-16 bg-[#e3ad31]"></div>
+          <p class="text-xs font-semibold uppercase tracking-[0.14em] text-[#f5cf70]">Alameda Pachacútec</p>
+          <h1 class="mt-4 text-4xl font-semibold leading-[1.12] xl:text-5xl">Escuela de Posgrado</h1>
+          <p class="mt-5 max-w-lg text-base leading-7 text-white/80">Sistema institucional para el seguimiento de expedientes de tesis.</p>
         </div>
-      </div>
+        <div class="relative flex items-end justify-between border-t border-white/20 pt-5 text-xs text-white/65"><span>EPG-UAC</span><span>{{ new Date().getFullYear() }}</span></div>
+      </section>
 
-      <!-- Formulario -->
-      <div class="card-glass p-8">
-        <h2 class="text-lg font-semibold text-white mb-1">Iniciar sesión</h2>
-        <p class="text-slate-400 text-sm mb-6">Ingresa tus credenciales institucionales</p>
-
-        <!-- Campo Correo -->
-        <div class="mb-4">
-          <label class="input-label">Correo electrónico</label>
-          <input
-            id="input-correo"
-            v-model="form.correo"
-            type="email"
-            class="input-field"
-            placeholder="tu.correo@uandina.edu.pe"
-            autocomplete="email"
-            @keyup.enter="ingresar"
-          />
-        </div>
-
-        <!-- Campo Contraseña -->
-        <div class="mb-6">
-          <label class="input-label">Contraseña</label>
-          <div class="relative">
-            <input
-              id="input-password"
-              v-model="form.password"
-              :type="mostrarPassword ? 'text' : 'password'"
-              class="input-field pr-10"
-              placeholder="••••••••"
-              autocomplete="current-password"
-              @keyup.enter="ingresar"
-            />
-            <button
-              type="button"
-              @click="mostrarPassword = !mostrarPassword"
-              class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
-            >
-              <svg v-if="mostrarPassword" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
-              </svg>
-              <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
+      <main class="flex min-h-full items-center justify-center bg-[#f8fafc] px-5 py-10 sm:px-10 lg:px-16 xl:bg-white xl:px-20">
+        <div class="w-full max-w-[420px]">
+          <div class="mb-10 flex items-center gap-3 xl:hidden">
+            <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-[#0b315f] shadow-sm"><img src="/brand/uac-logo-white.png" alt="UAC" class="h-8 w-8 object-contain" /></div>
+            <div><p class="text-xs font-semibold uppercase tracking-[0.1em] text-[#49617d]">Universidad Andina del Cusco</p><p class="mt-1 text-base font-semibold text-[#102a4c]">Escuela de Posgrado</p></div>
           </div>
-          <p class="text-xs text-slate-500 mt-1.5">Si no tienes contraseña asignada aún, deja el campo vacío.</p>
+          <header class="mb-9">
+            <p class="mb-4 inline-flex items-center border-l-[3px] border-[#d4a62a] pl-3 text-xs font-semibold uppercase tracking-[0.12em] text-[#49617d]">Acceso institucional</p>
+            <h2 class="text-[2rem] font-semibold leading-tight text-[#102a4c]">Bienvenido</h2>
+            <p class="mt-3 text-sm leading-6 text-slate-600">Ingresa con las credenciales asignadas a tu cuenta.</p>
+          </header>
+
+          <form action="/bot-posgrado/api/auth/login" method="post" autocomplete="on" class="space-y-6" @submit.prevent="ingresar">
+            <div>
+              <label for="input-usuario" class="login-label">Usuario</label>
+              <input id="input-usuario" v-model="form.usuario" name="username" type="text" class="login-input" placeholder="usuario" autocomplete="username" autocapitalize="none" spellcheck="false" required />
+            </div>
+            <div>
+              <label for="input-password" class="login-label">Contraseña</label>
+              <div class="relative">
+                <input id="input-password" v-model="form.password" name="password" :type="mostrarPassword ? 'text' : 'password'" class="login-input pr-12" placeholder="Contraseña" autocomplete="current-password" />
+                <button type="button" class="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-[#102a4c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0b315f]" :aria-label="mostrarPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'" :title="mostrarPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="mostrarPassword = !mostrarPassword"><i :class="mostrarPassword ? 'pi-eye-slash' : 'pi-eye'" class="pi"></i></button>
+              </div>
+            </div>
+            <div v-if="error" role="alert" class="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-3 text-sm leading-5 text-red-800"><i class="pi pi-exclamation-circle mt-0.5"></i><span>{{ error }}</span></div>
+            <button id="btn-ingresar" type="submit" :disabled="!puedeIngresar || procesando" class="login-primary"><i :class="procesando ? 'pi-spin pi-spinner' : 'pi-sign-in'" class="pi"></i>{{ procesando ? 'Verificando...' : 'Ingresar al sistema' }}</button>
+          </form>
+
+          <div v-if="googleDisponible" class="my-7 flex items-center gap-3 text-xs font-medium text-slate-400" aria-hidden="true"><span class="h-px flex-1 bg-slate-200"></span><span>o continúa con</span><span class="h-px flex-1 bg-slate-200"></span></div>
+          <button v-if="googleDisponible" type="button" class="login-google" :disabled="procesandoGoogle" @click="ingresarConGoogle"><i :class="procesandoGoogle ? 'pi-spin pi-spinner' : 'pi-google'" class="pi"></i>{{ procesandoGoogle ? 'Redirigiendo...' : 'Continuar con cuenta UAndina' }}</button>
+          <p class="mt-10 border-t border-slate-200 pt-5 text-xs leading-5 text-slate-500">Sistema de uso interno · Escuela de Posgrado UAC</p>
         </div>
-
-        <!-- Error -->
-        <div v-if="error" class="mb-4 flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-          <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-          </svg>
-          {{ error }}
-        </div>
-
-        <!-- Botón ingresar -->
-        <button
-          id="btn-ingresar"
-          @click="ingresar"
-          :disabled="!puedeIngresar || procesando"
-          class="btn-primary w-full justify-center py-3"
-        >
-          <svg v-if="procesando" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
-          </svg>
-          {{ procesando ? 'Verificando...' : 'Ingresar al sistema' }}
-        </button>
-      </div>
-
-      <p class="text-center text-slate-600 text-xs mt-6">
-        EPG-UAC © {{ new Date().getFullYear() }} — Sistema interno de gestión de tesis
-      </p>
+      </main>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import api from '../api.js'
@@ -120,12 +67,14 @@ import api from '../api.js'
 const router = useRouter()
 const auth = useAuthStore()
 
-const form = ref({ correo: '', password: '' })
+const form = ref({ usuario: '', password: '' })
 const mostrarPassword = ref(false)
 const procesando = ref(false)
+const procesandoGoogle = ref(false)
+const googleDisponible = ref(false)
 const error = ref('')
 
-const puedeIngresar = computed(() => form.value.correo.trim().length > 0)
+const puedeIngresar = computed(() => form.value.usuario.trim().length > 0)
 
 async function ingresar() {
   if (!puedeIngresar.value || procesando.value) return
@@ -133,26 +82,148 @@ async function ingresar() {
   error.value = ''
 
   try {
-    const res = await api.post('/auth/login', null, {
-      params: {
-        correo: form.value.correo.trim(),
-        password: form.value.password,
-      }
+    const credenciales = new URLSearchParams()
+    credenciales.set('username', form.value.usuario.trim())
+    credenciales.set('password', form.value.password)
+    const res = await api.post('/auth/login', credenciales, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     })
     auth.login(res.data)
-    router.push('/')
+    await sugerirGuardarContrasena()
+    router.push(res.data.debe_cambiar_password ? '/cambiar-password' : '/')
   } catch (e) {
     const status = e.response?.status
     const detail = e.response?.data?.detail
     if (status === 401) {
-      error.value = detail || 'Correo o contraseña incorrectos.'
-    } else if (status === 422) {
-      error.value = 'Por favor ingresa un correo válido.'
+      error.value = detail || 'Usuario o contraseña incorrectos.'
+    } else if (status === 422 || status === 400) {
+      error.value = detail || 'Revisa las credenciales ingresadas.'
     } else {
-      error.value = 'No se pudo conectar con el servidor. Verifica tu conexión.'
+      error.value = 'No se pudo conectar con el servidor. Verifica tu conexion.'
     }
   } finally {
     procesando.value = false
   }
 }
+
+async function cargarGoogleDisponible() {
+  try {
+    const respuesta = await api.get('/auth/google/config')
+    googleDisponible.value = Boolean(respuesta.data?.enabled)
+  } catch {
+    googleDisponible.value = false
+  }
+}
+
+function ingresarConGoogle() {
+  if (procesandoGoogle.value) return
+  procesandoGoogle.value = true
+  const dispositivo = localStorage.getItem('epg_dispositivo_id')
+  if (!dispositivo) {
+    error.value = 'No se pudo preparar este navegador para el inicio de sesión.'
+    procesandoGoogle.value = false
+    return
+  }
+  window.location.assign(`/bot-posgrado/api/auth/google/login?dispositivo=${encodeURIComponent(dispositivo)}`)
+}
+
+async function completarLoginGoogle() {
+  const hash = new URLSearchParams(window.location.hash.slice(1))
+  const token = hash.get('oauth_token')
+  const errorGoogle = hash.get('oauth_error')
+  if (!token && !errorGoogle) return
+
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  if (errorGoogle) {
+    error.value = errorGoogle
+    return
+  }
+
+  procesandoGoogle.value = true
+  try {
+    localStorage.setItem('epg_token', token)
+    const perfil = await api.get('/auth/me')
+    auth.login({ access_token: token, ...perfil.data, debe_cambiar_password: false })
+    router.replace('/')
+  } catch {
+    localStorage.removeItem('epg_token')
+    error.value = 'La sesión institucional no pudo completarse. Inténtalo otra vez.'
+  } finally {
+    procesandoGoogle.value = false
+  }
+}
+
+onMounted(() => {
+  completarLoginGoogle()
+  cargarGoogleDisponible()
+})
+
+async function sugerirGuardarContrasena() {
+  // Complementa el formulario semantico en Chrome cuando el login se resuelve por XHR.
+  if (!form.value.password || !window.PasswordCredential || !navigator.credentials?.store) return
+  try {
+    const credencial = new window.PasswordCredential({
+      id: form.value.usuario.trim(),
+      password: form.value.password,
+      name: form.value.usuario.trim(),
+    })
+    await navigator.credentials.store(credencial)
+  } catch {
+    // Algunos navegadores bloquean el guardado programatico; el login no debe fallar por ello.
+  }
+}
 </script>
+
+<style scoped>
+.login-visual {
+  background-image: url('/brand/posgrado-pachacutec-uac.webp');
+  background-position: center;
+  background-size: cover;
+}
+
+.login-visual-overlay { background: rgba(8, 35, 71, 0.86); }
+
+.login-label {
+  display: block;
+  margin-bottom: 0.55rem;
+  color: #243b5a;
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.login-input {
+  min-height: 3rem;
+  width: 100%;
+  border: 1px solid #bac7d7;
+  border-radius: 0.375rem;
+  background: #fff;
+  color: #102a4c;
+  font-size: 0.9375rem;
+  outline: none;
+  padding: 0.7rem 0.875rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.login-input::placeholder { color: #8291a5; }
+.login-input:focus { border-color: #0b5d8c; box-shadow: 0 0 0 3px rgba(11, 93, 140, 0.14); }
+
+.login-primary, .login-google {
+  display: inline-flex;
+  min-height: 3rem;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  border-radius: 0.375rem;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.login-primary { border: 1px solid #0b315f; background: #0b315f; color: #fff; box-shadow: 0 5px 12px rgba(11, 49, 95, 0.18); }
+.login-primary:hover:not(:disabled) { background: #08284d; }
+.login-google { border: 1px solid #aebdce; background: #fff; color: #173654; }
+.login-google:hover:not(:disabled) { border-color: #0b5d8c; background: #f3f8fc; }
+.login-primary:focus-visible, .login-google:focus-visible { outline: 3px solid rgba(11, 93, 140, 0.28); outline-offset: 2px; }
+.login-primary:disabled, .login-google:disabled { cursor: not-allowed; opacity: 0.56; }
+</style>

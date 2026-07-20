@@ -24,27 +24,29 @@
 
         <div class="flex items-center gap-2 flex-shrink-0">
           <!-- Botón abrir en nueva pestaña -->
-          <a
-            :href="urlVisor"
-            target="_blank"
+          <button
+            type="button"
             class="btn-ghost btn-sm"
             title="Abrir en nueva pestaña"
+            :disabled="!urlVisor"
+            @click="abrirEnNuevaPestana"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
             </svg>
-          </a>
+          </button>
           <!-- Botón descargar -->
-          <a
-            :href="urlVisor"
-            :download="modelValue?.nombre || modelValue?.nombre_archivo"
+          <button
+            type="button"
             class="btn-outline btn-sm"
+            :disabled="!urlVisor"
+            @click="descargarArchivo"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
             </svg>
             Descargar
-          </a>
+          </button>
           <!-- Cerrar -->
           <button @click="$emit('update:modelValue', null)" class="btn-ghost btn-sm text-slate-400 hover:text-white">
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -60,21 +62,24 @@
         <!-- IMAGEN: renderizado nativo con lightbox -->
         <div v-if="tipoArchivo === 'imagen'" class="flex items-center justify-center w-full h-full">
           <img
+            v-if="urlVisor && !cargandoArchivo && !errorCargando"
             :src="urlVisor"
             :alt="modelValue?.nombre"
             class="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
             @error="errorCargando = true"
           />
+          <p v-else-if="cargandoArchivo" class="text-sm text-slate-300">Cargando archivo seguro...</p>
           <div v-if="errorCargando" class="text-slate-400 text-sm text-center">
             <p>No se pudo cargar la imagen.</p>
-            <a :href="urlVisor" target="_blank" class="text-indigo-400 underline mt-2 block">Abrir directamente</a>
+            <button type="button" class="mt-2 text-indigo-400 underline" @click="abrirEnNuevaPestana">Abrir directamente</button>
           </div>
         </div>
 
         <!-- PDF: iframe directo (si URL local) o Google Docs Viewer (si URL externa) -->
         <div v-else-if="tipoArchivo === 'pdf'" class="w-full h-full flex flex-col">
+          <p v-if="cargandoArchivo" class="py-8 text-center text-sm text-slate-300">Cargando archivo seguro...</p>
           <iframe
-            v-if="!errorCargando"
+            v-else-if="urlIframePdf && !errorCargando"
             :src="urlIframePdf"
             class="w-full flex-1 rounded-lg border-0 bg-white"
             :title="modelValue?.nombre"
@@ -82,16 +87,15 @@
           ></iframe>
           <div v-if="errorCargando" class="text-slate-400 text-sm text-center py-8">
             <p>No se pudo cargar el PDF en el visor.</p>
-            <a :href="urlVisor" target="_blank" class="btn-primary mt-4 inline-flex">Descargar PDF</a>
+            <button type="button" class="btn-primary mt-4" @click="descargarArchivo">Descargar PDF</button>
           </div>
         </div>
 
         <!-- Word / Excel / otros: Google Docs Viewer iframe -->
         <div v-else-if="tipoArchivo === 'office'" class="w-full h-full flex flex-col">
-          <div class="mb-3 text-center">
-            <p class="text-xs text-slate-400">Previsualizando via Google Docs Viewer</p>
-          </div>
+          <div class="mb-3 text-center"><p class="text-xs text-slate-400">Los documentos Office se descargan de forma segura para abrirlos localmente.</p></div>
           <iframe
+            v-if="!esArchivoProtegido"
             :src="`https://docs.google.com/gview?url=${encodeURIComponent(urlVisor)}&embedded=true`"
             class="w-full flex-1 rounded-lg border-0 bg-white"
             :title="modelValue?.nombre"
@@ -107,9 +111,7 @@
           </div>
           <p class="text-slate-300 font-semibold">No hay previsualización disponible</p>
           <p class="text-slate-500 text-sm mt-1 mb-4">Este tipo de archivo no puede visualizarse en el navegador.</p>
-          <a :href="urlVisor" :download="modelValue?.nombre" class="btn-primary">
-            Descargar archivo
-          </a>
+          <button type="button" class="btn-primary" @click="descargarArchivo">Descargar archivo</button>
         </div>
       </div>
     </div>
@@ -117,7 +119,8 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import api from '../api.js'
 
 const props = defineProps({
   modelValue: {
@@ -130,18 +133,50 @@ const props = defineProps({
 defineEmits(['update:modelValue'])
 
 const errorCargando = ref(false)
+const urlObjeto = ref('')
+const cargandoArchivo = ref(false)
 
 // Resetear error al cambiar el archivo
-watch(() => props.modelValue, () => {
+watch(() => props.modelValue, async () => {
   errorCargando.value = false
-})
+  if (urlObjeto.value) URL.revokeObjectURL(urlObjeto.value)
+  urlObjeto.value = ''
+  const archivo = props.modelValue
+  if (!archivo?.api_archivo_url) return
+  cargandoArchivo.value = true
+  try {
+    const respuesta = await api.get(archivo.api_archivo_url, { responseType: 'blob' })
+    urlObjeto.value = URL.createObjectURL(respuesta.data)
+  } catch {
+    errorCargando.value = true
+  } finally {
+    cargandoArchivo.value = false
+  }
+}, { immediate: true })
+
+onBeforeUnmount(() => { if (urlObjeto.value) URL.revokeObjectURL(urlObjeto.value) })
 
 // URL a visualizar (compatibilidad con diferentes campos)
 const urlVisor = computed(() => {
   const obj = props.modelValue
   if (!obj) return ''
+  if (obj.api_archivo_url) return urlObjeto.value
   return obj.url_visor || obj.ruta_local || obj.archivo_drive_url || ''
 })
+
+const esArchivoProtegido = computed(() => Boolean(props.modelValue?.api_archivo_url))
+
+function abrirEnNuevaPestana() {
+  if (urlVisor.value) window.open(urlVisor.value, '_blank', 'noopener')
+}
+
+function descargarArchivo() {
+  if (!urlVisor.value) return
+  const enlace = document.createElement('a')
+  enlace.href = urlVisor.value
+  enlace.download = props.modelValue?.nombre || props.modelValue?.nombre_archivo || 'archivo'
+  enlace.click()
+}
 
 // Detectar tipo de archivo
 const tipoArchivo = computed(() => {

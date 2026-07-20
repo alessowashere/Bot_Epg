@@ -10,17 +10,20 @@ import os
 import re
 import unicodedata
 
+from nombres import quitar_tratamientos
+from identidad_academica import detectar_grado_documental, extraer_codigo_matricula, extraer_dni_etiquetado, limpiar_programa_academico
+
 logger = logging.getLogger(__name__)
 
 DIR_BASE_UPLOADS = os.getenv("EPG_UPLOADS_DIR", "/opt/sistema_posgrado/uploads/expedientes")
 URL_BASE_EXPEDIENTES = os.getenv("EPG_UPLOADS_PUBLIC_URL", "https://dataepis.uandina.pe/expedientes")
+MAX_PAGINAS_PDF = int(os.getenv("EPG_EXTRACT_MAX_PAGES", "6"))
+MAX_MB_ARCHIVO = int(os.getenv("EPG_EXTRACT_MAX_MB", "80"))
 
-PATRON_DNI = re.compile(r"\b(?:DNI|D\.N\.I)[.\s:Nro°º]*(\d{8})\b", re.IGNORECASE)
 PATRON_NRO_EXP = re.compile(r"(?:expediente\s*)?(?:#|Nro|N[°.º])[:\s.]*([0-9]{4,})", re.IGNORECASE)
 PATRON_EMAIL_ANY = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 PATRON_RESOLUCION = re.compile(r"RESOLUCI[OÓ]N\s+N[°.º]+\s*([\w\-]+)", re.IGNORECASE)
 PATRON_CODIGO_EMAIL_UAC = re.compile(r"([a-zA-Z0-9]{6,15}@uandina\.edu\.pe)", re.IGNORECASE)
-PATRON_CODIGO_ALU = re.compile(r"\b([0-9]{6,12}[A-Za-z]?)\b")
 PATRON_NOMBRE_FIRMA = re.compile(
     r"(?:Atentamente|Atte(?:ntamente)?)[,:\s]+"
     r"([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,4})",
@@ -47,11 +50,14 @@ def normalizar(texto: str) -> str:
 
 def detectar_grado(*textos: str) -> str | None:
     combinado = normalizar(" ".join(t for t in textos if t))
-    match = re.search(r"(?:para optar|aspirante)\s+al\s+grado\s+academico\s+de\s+([^.;\n]+)", combinado)
-    fragmento = match.group(1) if match else combinado
-    if re.search(r"\b(doctor|doctorado)\b", fragmento):
+    grado, _fuente = detectar_grado_documental(combinado)
+    if grado:
+        return grado
+    # En tickets la intención puede decir directamente "tesis de maestría".
+    # No se leen tratamientos ni menciones genéricas de Maestro/Doctor.
+    if re.search(r"\b(?:proyecto\s+de\s+)?tesis\s+(?:de\s+)?doctor(?:ado|al)?\b", combinado):
         return "Doctor"
-    if re.search(r"\b(maestro|maestria|magister)\b", fragmento):
+    if re.search(r"\b(?:proyecto\s+de\s+)?tesis\s+(?:de\s+)?maestr(?:ia|ia|o|a)?\b", combinado):
         return "Maestro"
     return None
 
@@ -80,9 +86,9 @@ def extraer_datos_cuerpo(cuerpo: str) -> dict:
 
     datos = {}
 
-    m = PATRON_DNI.search(cuerpo)
-    if m:
-        datos["dni"] = m.group(1)
+    dni = extraer_dni_etiquetado(cuerpo)
+    if dni:
+        datos["dni"] = dni
 
     nros = PATRON_NRO_EXP.findall(cuerpo)
     if nros:
@@ -95,9 +101,10 @@ def extraer_datos_cuerpo(cuerpo: str) -> dict:
         datos["email_uac_alumno"] = email_uac[0]
         datos["codigo_alumno"] = email_uac[0].split("@")[0]
 
-    codigos = PATRON_CODIGO_ALU.findall(cuerpo)
-    if codigos and "codigo_alumno" not in datos:
-        datos["codigo_alumno"] = codigos[0].upper()
+    if "codigo_alumno" not in datos:
+        codigo = extraer_codigo_matricula(cuerpo)
+        if codigo:
+            datos["codigo_alumno"] = codigo
 
     emails = sorted(set(PATRON_EMAIL_ANY.findall(cuerpo)))
     if emails:
@@ -109,7 +116,7 @@ def extraer_datos_cuerpo(cuerpo: str) -> dict:
 
     m_nombre = PATRON_NOMBRE_FIRMA.search(cuerpo)
     if m_nombre:
-        datos["nombre_firma"] = m_nombre.group(1).strip()
+        datos["nombre_firma"] = quitar_tratamientos(m_nombre.group(1))
 
     grado = detectar_grado(cuerpo)
     if grado:
@@ -143,11 +150,17 @@ def analizar_caratula(texto: str) -> dict:
         lineas_titulo = [l.strip() for l in titulo_raw.split("\n") if l.strip()]
         lineas_filtradas = []
         for l in lineas_titulo:
-            l_norm = l.lower()
-            if any(k in l_norm for k in ["universidad", "escuela", "posgrado", "facultad", "filial", "acreditada", "tesis"]):
+            l = re.sub(r"^\[Pagina\s+\d+\]\s*", "", l, flags=re.IGNORECASE).strip()
+            l_norm = normalizar(l)
+            if "para optar" in l_norm or "para obtener" in l_norm:
+                break
+            if any(k in l_norm for k in ["universidad", "escuela de", "posgrado", "facultad", "filial", "acreditada"]):
+                continue
+            if re.match(r"^(proyecto de tesis|tesis|maestria|doctorado|programa de|grado academico)", l_norm):
                 continue
             lineas_filtradas.append(l)
         titulo = " ".join(lineas_filtradas).strip('"').strip('“').strip('”').strip()
+        titulo = re.sub(r"\s+para\s+(optar|obtener)\b.*$", "", titulo, flags=re.IGNORECASE).strip()
         
         # CORTAFUEGOS: Si el título excede 250 caracteres, probablemente fue un error de extracción masiva
         if len(titulo) > 250:
@@ -167,8 +180,8 @@ def analizar_caratula(texto: str) -> dict:
                 alumno_raw = alumno_raw[len(intro):].strip()
         lineas_alu = [l.strip() for l in alumno_raw.split("\n") if l.strip()]
         if lineas_alu:
-            n_alu = lineas_alu[0]
-            n_alu = re.sub(r"^(br\.|bach\.|bachiller|lic\.|ing\.|don\.|doña|sr\.|sra\.)\s*", "", n_alu, flags=re.IGNORECASE).strip()
+            n_alu = " ".join(lineas_alu[:3])
+            n_alu = quitar_tratamientos(n_alu)
             # Limpiar cualquier texto largo basura
             if " el " in n_alu.lower() or "%" in n_alu or len(n_alu) > 100:
                 n_alu = n_alu[:100].split(",")[0]  # intentar quedarnos con algo limpio
@@ -176,13 +189,23 @@ def analizar_caratula(texto: str) -> dict:
 
     # 3. Intentar detectar Grado
     grado = None
-    match_grado = re.search(r"grado\s+academico\s+de\s+(maestro|doctor|magister)\b", texto_limpio, re.IGNORECASE)
+    grado_academico = ""
+    programa = ""
+    match_grado = re.search(
+        r"(?:para\s+optar\s+al\s+)?grado\s+acad[eé]mico\s+de\s*\n?\s*((?:maestro|maestr[ií]a|mag[ií]ster|doctor|doctorado)\b[^\n]*)",
+        texto_limpio,
+        re.IGNORECASE,
+    )
     if match_grado:
-        tipo = match_grado.group(1).lower()
-        if tipo in ["maestro", "magister"]:
+        grado_academico = re.sub(r"\s+", " ", match_grado.group(1)).strip(" .:-").upper()
+        tipo = normalizar(grado_academico)
+        if re.search(r"\b(maestro|maestria|magister)\b", tipo):
             grado = "Maestro"
-        elif tipo == "doctor":
+        elif re.search(r"\b(doctor|doctorado)\b", tipo):
             grado = "Doctor"
+        match_programa = re.search(r"\bEN\s+(.+)$", grado_academico)
+        if match_programa:
+            programa = limpiar_programa_academico(match_programa.group(1))
 
     # 4. Intentar detectar Asesor
     asesor = ""
@@ -206,8 +229,9 @@ def analizar_caratula(texto: str) -> dict:
             
         lineas_ase = [l.strip() for l in asesor_raw.split("\n") if l.strip()]
         if lineas_ase:
-            n_ase = lineas_ase[0]
+            n_ase = " ".join(lineas_ase[:3])
             n_ase = re.sub(r"^(dr\.|dra\.|mg\.|mgt\.|mag\.)\s*", "", n_ase, flags=re.IGNORECASE).strip()
+            n_ase = re.sub(r"\s*(?:n[.°ºo]?\s*)?$", "", n_ase, flags=re.IGNORECASE).strip()
             if len(n_ase) > 100:
                 n_ase = n_ase[:100]
             asesor = n_ase
@@ -221,6 +245,8 @@ def analizar_caratula(texto: str) -> dict:
         "titulo_tesis": titulo,
         "nombre_alumno": alumno,
         "grado_postula": grado,
+        "grado_academico": grado_academico,
+        "programa": programa,
         "nombre_asesor": asesor,
         "alumno_orcid": alumno_orcid,
         "asesor_orcid": asesor_orcid
@@ -233,7 +259,10 @@ def generar_resumen_ticket(asunto: str, cuerpo: str, textos_adjuntos) -> dict:
     else:
         texto_adjuntos = textos_adjuntos or ""
 
-    paso = detectar_paso(asunto, cuerpo, texto_adjuntos)
+    # El asunto expresa la intención del trámite y debe prevalecer sobre una
+    # mención accesoria dentro de un informe adjunto (por ejemplo, "asesor").
+    paso_asunto = detectar_paso(asunto)
+    paso = paso_asunto if paso_asunto["id_paso"] else detectar_paso(cuerpo, texto_adjuntos)
     grado = detectar_grado(asunto, cuerpo, texto_adjuntos)
     datos_alumno = extraer_datos_cuerpo("\n\n".join([cuerpo or "", texto_adjuntos]))
     resoluciones = datos_alumno.get("resoluciones", [])
@@ -276,6 +305,8 @@ def extraer_texto_pdf(ruta_archivo: str) -> str:
         texto_total = []
         with pdfplumber.open(ruta_archivo) as pdf:
             for num_pagina, pagina in enumerate(pdf.pages, start=1):
+                if MAX_PAGINAS_PDF and num_pagina > MAX_PAGINAS_PDF:
+                    break
                 texto = pagina.extract_text()
                 if texto and texto.strip():
                     texto_total.append(f"[Pagina {num_pagina}]\n{texto.strip()}")
@@ -307,6 +338,13 @@ def extraer_texto_archivo(ruta_archivo: str) -> str:
     if not ruta_archivo or not os.path.exists(ruta_archivo):
         return ""
 
+    try:
+        if MAX_MB_ARCHIVO and os.path.getsize(ruta_archivo) > MAX_MB_ARCHIVO * 1024 * 1024:
+            logger.warning("Archivo omitido por tamano > %s MB: %s", MAX_MB_ARCHIVO, ruta_archivo)
+            return ""
+    except OSError:
+        return ""
+
     ext = os.path.splitext(ruta_archivo)[1].lower()
 
     if ext == ".pdf":
@@ -326,9 +364,13 @@ def extraer_texto_archivo(ruta_archivo: str) -> str:
 def url_a_ruta_local(url_publica: str) -> str:
     import urllib.parse
 
+    path_url = urllib.parse.unquote(urllib.parse.urlparse(url_publica).path)
+    marcador = "/expedientes/"
+    if marcador in path_url:
+        ruta_relativa = path_url.split(marcador, 1)[1]
+        return os.path.join(DIR_BASE_UPLOADS, ruta_relativa)
     if url_publica.startswith(URL_BASE_EXPEDIENTES):
-        ruta_relativa = url_publica[len(URL_BASE_EXPEDIENTES) :]
-        ruta_relativa = urllib.parse.unquote(ruta_relativa)
+        ruta_relativa = urllib.parse.unquote(url_publica[len(URL_BASE_EXPEDIENTES) :])
         return DIR_BASE_UPLOADS + ruta_relativa
     return ""
 

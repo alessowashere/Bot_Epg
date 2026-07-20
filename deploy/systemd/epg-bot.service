@@ -7,9 +7,26 @@ After=network-online.target mariadb.service
 Type=oneshot
 WorkingDirectory=/opt/sistema_posgrado/backend
 EnvironmentFile=-/opt/sistema_posgrado/backend/.env
+Environment=OSTICKET_MAX_DEEP_CRAWL=30
+Environment=EPG_BACKFILL_WORKERS=1
+Environment=EPG_BACKFILL_MAX_TICKETS=40
+Environment=EPG_EXTRACT_MAX_PAGES=6
+Environment=EPG_SYNC_TIMEOUT_SECONDS=300
+Environment=EPG_BACKFILL_TIMEOUT_SECONDS=450
+Environment=OSTICKET_NAVIGATION_TIMEOUT_MS=15000
+Environment=OSTICKET_SELECTOR_TIMEOUT_MS=8000
+Environment=EPG_BOT_CPU_QUOTA=35%
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 ExecStart=/opt/sistema_posgrado/backend/venv/bin/python /opt/sistema_posgrado/backend/supervisor_bot.py
 User=www-data
 Group=www-data
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+CPUQuota=35%
+MemoryHigh=700M
+MemoryMax=1G
+TimeoutStartSec=8min
 
 [Install]
 WantedBy=multi-user.target

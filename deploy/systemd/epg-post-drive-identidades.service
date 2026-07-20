@@ -1,0 +1,15 @@
+[Unit]
+Description=EPG-UAC catálogo y antecedentes tras evidencia Drive
+After=epg-drive-evidencia.service mariadb.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/sistema_posgrado/backend
+EnvironmentFile=-/opt/sistema_posgrado/backend/.env
+ExecStart=/opt/sistema_posgrado/backend/venv/bin/python /opt/sistema_posgrado/backend/post_drive_identidades.py
+Nice=15
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+CPUQuota=30%

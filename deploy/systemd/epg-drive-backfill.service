@@ -1,0 +1,19 @@
+[Unit]
+Description=EPG-UAC ingesta inicial de resoluciones desde Google Drive
+Wants=network-online.target
+After=network-online.target mariadb.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/sistema_posgrado/backend
+EnvironmentFile=-/opt/sistema_posgrado/backend/.env
+ExecStart=/opt/sistema_posgrado/backend/venv/bin/python /opt/sistema_posgrado/backend/drive_backfill_supervisor.py
+Nice=15
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+CPUQuota=85%
+MemoryHigh=1536M
+MemoryMax=1792M
+TimeoutStartSec=infinity

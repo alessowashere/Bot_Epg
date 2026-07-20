@@ -1,0 +1,8 @@
+[Unit]
+Description=Activa reconstruccion EPG tras Drive
+[Timer]
+OnCalendar=*-*-* *:5/15:00
+Persistent=true
+Unit=epg-reconstruccion-nocturna.service
+[Install]
+WantedBy=timers.target

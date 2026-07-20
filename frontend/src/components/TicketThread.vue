@@ -39,27 +39,33 @@
 
     <!-- Formulario de respuesta -->
     <div v-if="mostrarFormulario" class="mt-4 pt-4 border-t border-slate-700/50">
-      <h4 class="text-xs font-semibold text-slate-300 mb-3">Responder en osTicket</h4>
+      <h4 class="mb-3 text-xs font-semibold text-slate-700 dark:text-slate-300">Registrar comunicacion</h4>
       <div class="space-y-3">
         <div class="flex gap-2">
           <button
             @click="tipoRespuesta = 'nota_interna'"
             :class="['btn-sm text-xs flex-1', tipoRespuesta === 'nota_interna' ? 'btn-primary' : 'btn-ghost']"
           >
-            Nota Interna
+            Nota local
           </button>
           <button
             @click="tipoRespuesta = 'respuesta_cliente'"
             :class="['btn-sm text-xs flex-1', tipoRespuesta === 'respuesta_cliente' ? 'btn-warning' : 'btn-ghost']"
           >
-            Respuesta al Alumno
+            Solicitar respuesta
+          </button>
+          <button
+            @click="tipoRespuesta = 'observacion_estudiante'"
+            :class="['btn-sm text-xs flex-1', tipoRespuesta === 'observacion_estudiante' ? 'btn-warning' : 'btn-ghost']"
+          >
+            Observar
           </button>
         </div>
         <textarea
           v-model="mensajeRespuesta"
           class="input-field resize-none text-sm"
           rows="4"
-          :placeholder="tipoRespuesta === 'nota_interna' ? 'Escribe una nota interna (solo visible para el equipo)...' : 'Escribe la respuesta para el alumno...'"
+          :placeholder="placeholderRespuesta"
         ></textarea>
         <div class="flex gap-2 justify-end">
           <button @click="cancelarRespuesta" class="btn-ghost btn-sm">Cancelar</button>
@@ -72,7 +78,7 @@
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
-            {{ enviando ? 'Enviando...' : (tipoRespuesta === 'nota_interna' ? 'Agregar Nota' : 'Enviar Respuesta') }}
+            {{ textoBoton }}
           </button>
         </div>
         <p v-if="errorEnvio" class="text-xs text-red-400">{{ errorEnvio }}</p>
@@ -86,20 +92,21 @@
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        Agregar respuesta / nota
+        Agregar nota o respuesta
       </button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import api from '../api.js'
 import { useAuthStore } from '../stores/auth.js'
 
 const props = defineProps({
   ticketRef: { type: String, required: true },
   cuerpoTicket: { type: String, default: '' },
+  mensajesLocales: { type: Array, default: () => [] },
 })
 
 const emit = defineEmits(['respuesta-enviada'])
@@ -125,6 +132,14 @@ function construirHilo(cuerpo) {
       fecha: '',
     })
   }
+  for (const msg of props.mensajesLocales || []) {
+    hilo.push({
+      tipo: msg.tipo || 'nota_interna',
+      autor: msg.usuario || 'Sistema',
+      cuerpo: msg.mensaje || '',
+      fecha: msg.fecha ? new Date(msg.fecha).toLocaleString('es-PE') : '',
+    })
+  }
   return hilo
 }
 
@@ -138,6 +153,8 @@ function etiquetaTipo(tipo) {
     alumno: 'Alumno',
     respuesta_agente: 'Agente EPG',
     nota_interna: 'Nota Interna',
+    respuesta_cliente: 'Respuesta pendiente de aprobación',
+    observacion_estudiante: 'Observación pendiente de envío',
   }
   return map[tipo] || tipo
 }
@@ -147,6 +164,8 @@ function avatarClass(tipo) {
     alumno: 'bg-emerald-600',
     respuesta_agente: 'bg-indigo-600',
     nota_interna: 'bg-yellow-600',
+    respuesta_cliente: 'bg-amber-600',
+    observacion_estudiante: 'bg-orange-600',
   }
   return map[tipo] || 'bg-slate-600'
 }
@@ -160,16 +179,23 @@ function cancelarRespuesta() {
 
 async function enviarRespuesta() {
   if (!mensajeRespuesta.value.trim()) return
+  if (tipoRespuesta.value !== 'nota_interna') {
+    const mensaje = tipoRespuesta.value === 'observacion_estudiante'
+      ? 'Se registrará una observación para responder y cerrar el ticket cuando se habilite el canario de osTicket. Aún no se enviará nada. ¿Continuar?'
+      : 'Esta acción registrará una solicitud pendiente de aprobación. No se enviará nada a osTicket en esta fase. ¿Continuar?'
+    const confirmado = window.confirm(mensaje)
+    if (!confirmado) return
+  }
   enviando.value = true
   errorEnvio.value = ''
   exitoEnvio.value = ''
 
   try {
-    await api.post(`/tickets/${props.ticketRef}/responder-osticket`, null, {
+    const respuesta = await api.post(`/tickets/${props.ticketRef}/responder-osticket`, null, {
       params: {
         mensaje: mensajeRespuesta.value,
         tipo: tipoRespuesta.value,
-        usuario_nombre: auth.nombre,
+        confirmar_envio: tipoRespuesta.value === 'respuesta_cliente',
       }
     })
 
@@ -182,8 +208,10 @@ async function enviarRespuesta() {
     })
 
     exitoEnvio.value = tipoRespuesta.value === 'nota_interna'
-      ? '✓ Nota interna agregada y enviada a osTicket.'
-      : '✓ Respuesta enviada al alumno en osTicket.'
+      ? 'Nota guardada localmente.'
+      : tipoRespuesta.value === 'observacion_estudiante'
+        ? `Observación preparada para responder y cerrar${respuesta.data?.outbox_uuid ? ` (${respuesta.data.outbox_uuid})` : ''}. Aún no se envió nada a osTicket.`
+        : `Solicitud pendiente de aprobación${respuesta.data?.outbox_uuid ? ` (${respuesta.data.outbox_uuid})` : ''}. No se envió nada a osTicket.`
 
     mensajeRespuesta.value = ''
     mostrarFormulario.value = false
@@ -199,9 +227,18 @@ onMounted(() => {
   mensajes.value = construirHilo(props.cuerpoTicket)
 })
 
-watch(() => props.cuerpoTicket, (nuevoValor) => {
-  if (nuevoValor && mensajes.value.length === 0) {
-    mensajes.value = construirHilo(nuevoValor)
-  }
+watch(() => [props.cuerpoTicket, props.mensajesLocales], () => {
+  mensajes.value = construirHilo(props.cuerpoTicket)
+}, { deep: true })
+
+const placeholderRespuesta = computed(() => ({
+  nota_interna: 'Escribe una nota local para el equipo...',
+  respuesta_cliente: 'Escribe la respuesta para solicitar aprobación...',
+  observacion_estudiante: 'Explica la observación e indica cómo presentar el nuevo ticket...',
+}[tipoRespuesta.value]))
+
+const textoBoton = computed(() => {
+  if (enviando.value) return 'Procesando...'
+  return ({ nota_interna: 'Guardar nota', respuesta_cliente: 'Solicitar aprobación', observacion_estudiante: 'Preparar observación' }[tipoRespuesta.value])
 })
 </script>

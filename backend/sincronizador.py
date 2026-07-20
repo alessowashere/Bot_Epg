@@ -1,8 +1,10 @@
 import logging
 import os
+import time
+import hashlib
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urljoin, urlparse, parse_qs
+from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
@@ -21,6 +23,15 @@ URL_TICKETS_ABIERTOS = os.getenv("OSTICKET_URL_TICKETS", f"{URL_BASE}/scp/ticket
 ARCHIVO_SESION = os.getenv("OSTICKET_AUTH_FILE", "/opt/sistema_posgrado/backend/auth.json")
 DIR_TEMP_ADJUNTOS = os.getenv("OSTICKET_TEMP_ATTACHMENTS", "/opt/sistema_posgrado/backend/temp_adjuntos")
 LOG_FILE = os.getenv("OSTICKET_SYNC_LOG", "/opt/sistema_posgrado/backend/sincronizador.log")
+MAX_DEEP_CRAWL = int(os.getenv("OSTICKET_MAX_DEEP_CRAWL", "80"))
+FORZAR_ADJUNTOS = os.getenv("OSTICKET_FORCE_ATTACHMENTS", "false").lower() in {"1", "true", "yes"}
+URL_PUBLICA_ADJUNTOS = os.getenv("EPG_UPLOADS_PUBLIC_URL", "https://dataepis.uandina.pe/expedientes")
+DIR_FINAL_ADJUNTOS = Path("/opt/sistema_posgrado/uploads/expedientes")
+INTENTOS_RENOVACION_SESION = max(1, int(os.getenv("OSTICKET_AUTH_RENEW_ATTEMPTS", "2")))
+ESPERA_RENOVACION_SESION = max(0.0, min(float(os.getenv("OSTICKET_AUTH_RENEW_WAIT_SECONDS", "2")), 10.0))
+RELECTURA_HILO_HORAS = max(1, int(os.getenv("OSTICKET_THREAD_RECHECK_HOURS", "6")))
+NAVEGACION_TIMEOUT_MS = max(5000, min(int(os.getenv("OSTICKET_NAVIGATION_TIMEOUT_MS", "15000")), 60000))
+SELECTOR_TIMEOUT_MS = max(2000, min(int(os.getenv("OSTICKET_SELECTOR_TIMEOUT_MS", "8000")), 30000))
 
 Path(LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
@@ -29,6 +40,17 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger("sincronizador")
+
+
+def preparar_pagina(page):
+    page.set_default_navigation_timeout(NAVEGACION_TIMEOUT_MS)
+    page.set_default_timeout(SELECTOR_TIMEOUT_MS)
+    return page
+
+
+def navegar_lista(page, url: str):
+    """Carga lo mínimo necesario para osTicket sin esperar conexiones eternas."""
+    page.goto(url, wait_until="domcontentloaded", timeout=NAVEGACION_TIMEOUT_MS)
 
 
 def parsear_fecha_osticket(valor: str | None) -> datetime:
@@ -105,8 +127,12 @@ def guardar_ticket_basico(db, ticket_data: dict) -> bool:
             return True
         faltan_datos_html = not ticket.nombre_estudiante_osticket or not ticket.email_estudiante or not ticket.codigo_alumno_osticket
         faltan_adjuntos = len(ticket.adjuntos) == 0 and ticket.estado_scraping == "Archivos_Descargados"
+        # osTicket no expone una API de cambios. Releer de forma acotada los
+        # tickets abiertos evita perder mensajes/adjuntos añadidos al mismo hilo.
+        ultima_lectura = ticket.fecha_extraccion or ticket.fecha_creacion_osticket
+        requiere_relectura = not ultima_lectura or (datetime.utcnow() - ultima_lectura).total_seconds() >= RELECTURA_HILO_HORAS * 3600
         db.commit()
-        return faltan_datos_html or faltan_adjuntos
+        return faltan_datos_html or faltan_adjuntos or requiere_relectura
 
     nuevo_ticket = TicketOsticket(
         ticket_id=ticket_data["id_interno"],
@@ -137,7 +163,25 @@ def guardar_datos_detalle(db, ticket_id: int, detalle: dict):
     if not ticket:
         return
 
-    ticket.cuerpo = detalle.get("cuerpo") or ticket.cuerpo
+    cuerpo = detalle.get("cuerpo") or ""
+    hash_hilo = hashlib.sha256(cuerpo.encode("utf-8")).hexdigest() if cuerpo else None
+    datos = dict(ticket.datos_extraidos or {})
+    sync = dict(datos.get("sincronizacion_osticket") or {})
+    hash_anterior = sync.get("hash_hilo")
+    cambio_hilo = bool(hash_anterior and hash_hilo and hash_anterior != hash_hilo)
+    sync.update(
+        {
+            "hash_hilo": hash_hilo,
+            "fecha_ultima_lectura": datetime.utcnow().isoformat(),
+            "hilo_actualizado_en_ultima_lectura": cambio_hilo,
+        }
+    )
+    if cambio_hilo:
+        sync["fecha_ultimo_cambio_hilo"] = datetime.utcnow().isoformat()
+        logger.info("Ticket %s actualizado: se detectó un mensaje o cambio nuevo en el hilo.", ticket.numero_visual)
+    datos["sincronizacion_osticket"] = sync
+    ticket.datos_extraidos = datos
+    ticket.cuerpo = cuerpo or ticket.cuerpo
     ticket.nombre_estudiante_osticket = detalle.get("nombre") or ticket.nombre_estudiante_osticket
     ticket.email_estudiante = detalle.get("email") or ticket.email_estudiante
     ticket.codigo_alumno_osticket = detalle.get("codigo") or ticket.codigo_alumno_osticket
@@ -160,9 +204,25 @@ def guardar_adjunto_bd(db, ticket_id: int, nombre_archivo: str, url_archivo: str
     db.commit()
 
 
+def adjunto_ya_disponible(adjunto: TicketAdjunto | None) -> bool:
+    if FORZAR_ADJUNTOS or not adjunto or not adjunto.ruta_local:
+        return False
+    ruta = adjunto.ruta_local
+    if ruta.startswith(URL_PUBLICA_ADJUNTOS):
+        relativa = unquote(ruta[len(URL_PUBLICA_ADJUNTOS):]).lstrip("/")
+        return (DIR_FINAL_ADJUNTOS / relativa).exists()
+    if ruta.startswith(("http://", "https://")):
+        return True
+    return Path(ruta).exists()
+
+
 def actualizar_estado_descarga(db, ticket_id: int, num_archivos: int, descargados: int):
     ticket = db.query(TicketOsticket).filter(TicketOsticket.ticket_id == ticket_id).first()
     if not ticket:
+        return
+
+    if ticket.id_expediente or ticket.estado_scraping in ("Clasificado", "Notificado"):
+        db.commit()
         return
 
     if num_archivos == 0:
@@ -175,30 +235,61 @@ def actualizar_estado_descarga(db, ticket_id: int, num_archivos: int, descargado
 
 
 def asegurar_sesion(browser):
-    if not Path(ARCHIVO_SESION).exists():
-        logger.info("No existe auth.json; generando sesion.")
-        generar_sesion(browser)
+    """Abre la cola con la sesion vigente y reintenta una renovacion transitoria.
 
-    context = browser.new_context(storage_state=ARCHIVO_SESION)
-    page = context.new_page()
-    page.goto(URL_TICKETS_ABIERTOS)
-    page.wait_for_load_state("networkidle")
+    osTicket ocasionalmente rechaza una renovacion aislada aunque las credenciales
+    siguen siendo validas. El reintento ocurre antes de iniciar cualquier lectura
+    o escritura de tickets, por lo que no duplica operaciones del ciclo.
+    """
+    ultima_causa = "sin detalle"
+    requiere_renovacion = not Path(ARCHIVO_SESION).exists()
 
-    if "login.php" not in page.url:
-        return context, page
+    for intento in range(1, INTENTOS_RENOVACION_SESION + 1):
+        context = None
+        try:
+            if not requiere_renovacion:
+                context = browser.new_context(storage_state=ARCHIVO_SESION)
+                page = preparar_pagina(context.new_page())
+                navegar_lista(page, URL_TICKETS_ABIERTOS)
+                if "login.php" not in page.url:
+                    sesion_activa = context
+                    context = None
+                    return sesion_activa, page
 
-    logger.info("Sesion expirada; renovando auth.json.")
-    context.close()
-    if not generar_sesion(browser):
-        raise RuntimeError("No se pudo renovar auth.json de osTicket")
+                ultima_causa = "osTicket redirigio a login"
+                logger.info("Sesion expirada; renovando auth.json (intento %s/%s).", intento, INTENTOS_RENOVACION_SESION)
+                context.close()
+                context = None
+            else:
+                ultima_causa = "no existe auth.json"
+                logger.info("No existe auth.json; generando sesion (intento %s/%s).", intento, INTENTOS_RENOVACION_SESION)
 
-    context = browser.new_context(storage_state=ARCHIVO_SESION)
-    page = context.new_page()
-    page.goto(URL_TICKETS_ABIERTOS)
-    page.wait_for_load_state("networkidle")
-    if "login.php" in page.url:
-        raise RuntimeError("osTicket sigue redirigiendo a login tras renovar sesion")
-    return context, page
+            if generar_sesion(browser):
+                requiere_renovacion = False
+                context = browser.new_context(storage_state=ARCHIVO_SESION)
+                page = preparar_pagina(context.new_page())
+                navegar_lista(page, URL_TICKETS_ABIERTOS)
+                if "login.php" not in page.url:
+                    sesion_activa = context
+                    context = None
+                    return sesion_activa, page
+                ultima_causa = "osTicket sigue redirigiendo a login tras renovar sesion"
+            else:
+                ultima_causa = "el login remoto no confirmo la nueva sesion"
+        except Exception as exc:
+            ultima_causa = f"{type(exc).__name__}: {exc}"
+            logger.warning("Fallo preparando sesion osTicket (intento %s/%s): %s", intento, INTENTOS_RENOVACION_SESION, ultima_causa)
+            requiere_renovacion = True
+        finally:
+            if context:
+                context.close()
+
+        if intento < INTENTOS_RENOVACION_SESION and ESPERA_RENOVACION_SESION:
+            time.sleep(ESPERA_RENOVACION_SESION)
+
+    raise RuntimeError(
+        f"No se pudo renovar auth.json de osTicket tras {INTENTOS_RENOVACION_SESION} intento(s): {ultima_causa}"
+    )
 
 
 def listar_tickets_todas_paginas(page) -> list[dict]:
@@ -210,14 +301,13 @@ def listar_tickets_todas_paginas(page) -> list[dict]:
         url_paginada = f"{URL_TICKETS_ABIERTOS}&p={pagina}"
         logger.info("Navegando a la pagina %s: %s", pagina, url_paginada)
         try:
-            page.goto(url_paginada)
-            page.wait_for_load_state("networkidle")
+            navegar_lista(page, url_paginada)
         except Exception as e:
             logger.error("Error cargando pagina %s: %s", pagina, e)
             break
 
         try:
-            page.wait_for_selector("table.list.queue.tickets tbody tr", timeout=8000)
+            page.wait_for_selector("table.list.queue.tickets tbody tr", timeout=SELECTOR_TIMEOUT_MS)
         except PlaywrightTimeoutError:
             logger.warning("No se encontro tabla de tickets en pagina %s (Fin de la cola)", pagina)
             break
@@ -266,8 +356,7 @@ def listar_tickets_todas_paginas(page) -> list[dict]:
 
 
 def extraer_detalle_ticket(page, url_detalle: str) -> dict:
-    page.goto(url_detalle)
-    page.wait_for_load_state("domcontentloaded")
+    navegar_lista(page, url_detalle)
 
     hilos = page.locator(".thread-body").all_inner_texts()
     cuerpo = "\n\n--- hilo osTicket ---\n\n".join(h.strip() for h in hilos if h.strip())
@@ -301,6 +390,18 @@ def descargar_adjuntos(page, db, ticket_data: dict) -> tuple[int, int]:
         enlace = enlaces.nth(i)
         nombre_archivo = enlace.get_attribute("download") or enlace.inner_text().strip() or f"adjunto_{i}.bin"
         nombre_archivo = os.path.basename(nombre_archivo.replace("\\", "/"))
+        existente = (
+            db.query(TicketAdjunto)
+            .filter(
+                TicketAdjunto.ticket_id == ticket_data["id_interno"],
+                TicketAdjunto.nombre_archivo == nombre_archivo,
+            )
+            .first()
+        )
+        if adjunto_ya_disponible(existente):
+            descargados += 1
+            logger.debug("Adjunto ya disponible; se omite descarga: %s", nombre_archivo)
+            continue
         url_descarga = enlace.get_attribute("href")
         if not url_descarga:
             continue
@@ -374,6 +475,9 @@ def extraer_datos():
                     logger.warning("Error guardando ticket base %s: %s", ticket_data.get("numero_visual"), e)
 
             logger.info("Tickets para deep crawl: %s", len(tickets_a_profundizar))
+            if MAX_DEEP_CRAWL and len(tickets_a_profundizar) > MAX_DEEP_CRAWL:
+                logger.info("Limitando deep crawl a %s tickets en esta corrida", MAX_DEEP_CRAWL)
+                tickets_a_profundizar = tickets_a_profundizar[:MAX_DEEP_CRAWL]
 
             for ticket_data in tickets_a_profundizar:
                 try:

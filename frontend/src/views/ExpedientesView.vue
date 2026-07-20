@@ -1,9 +1,10 @@
 <template>
-  <div class="p-6 space-y-5 animate-fade-in">
+  <div class="page-shell animate-fade-in">
     <div class="flex items-center justify-between">
       <div>
-        <h2 class="text-2xl font-bold text-white">Expedientes</h2>
-        <p class="text-slate-400 text-sm mt-0.5">Gesti&oacute;n del flujo de tesis</p>
+        <p class="eyebrow">Operacion academica</p>
+        <h2 class="page-title">Expedientes oficiales</h2>
+        <p class="page-subtitle">Seguimiento del flujo de tesis</p>
       </div>
     </div>
 
@@ -24,6 +25,16 @@
         <option value="Observado">Observado</option>
         <option value="Archivado_Graduado">Graduados</option>
         <option value="Caduco">Caducos</option>
+      </select>
+      <select v-model="filtros.anio" @change="buscar" class="input-field w-32">
+        <option value="">Todos los años</option>
+        <option v-for="anio in anios" :key="anio" :value="anio">{{ anio }}</option>
+      </select>
+      <select v-model="filtros.requisitos" @change="buscar" class="input-field w-48">
+        <option value="">Todos los requisitos</option>
+        <option value="pendientes">Con pendientes</option>
+        <option value="observados">Con observaciones</option>
+        <option value="listos">Listos para revisar</option>
       </select>
       <select v-model.number="porPagina" @change="pagina = 1; cargar()" class="input-field w-28">
         <option :value="10">10</option>
@@ -69,29 +80,29 @@
           <tr v-for="exp in expedientes" :key="exp.uuid || exp.id_expediente" class="cursor-pointer hover:bg-slate-700/20 transition-colors" @click="abrirExpediente(exp)">
             <td>
               <div class="flex items-center gap-4">
-                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-lg shadow-lg flex-shrink-0">
+                <div class="w-10 h-10 rounded-md border border-sky-200 bg-sky-50 flex items-center justify-center text-sky-800 font-bold text-lg shadow-sm flex-shrink-0 dark:border-cyan-500/30 dark:bg-cyan-500/15 dark:text-cyan-100">
                   {{ exp.nombre_alumno.charAt(0).toUpperCase() }}
                 </div>
                 <div>
-                  <p class="font-bold text-white text-[15px] tracking-tight">{{ exp.nombre_alumno }}</p>
-                  <p class="text-xs font-mono text-indigo-300 mt-0.5 font-semibold">EXP-2026-{{ String(exp.id_expediente).padStart(4, '0') }} <span class="text-slate-500">| {{ exp.codigo_alumno }}</span></p>
-                  <p v-if="exp.titulo_tesis" class="text-xs text-slate-400 mt-1 max-w-sm hidden xl:block leading-relaxed" :title="exp.titulo_tesis">
+                  <p class="font-bold text-slate-900 dark:text-white text-[15px] tracking-tight">{{ exp.nombre_alumno }}</p>
+                  <p class="text-xs font-mono text-sky-700 dark:text-cyan-300 mt-0.5 font-semibold">EXP-2026-{{ String(exp.id_expediente).padStart(4, '0') }} <span class="text-slate-500 dark:text-slate-400">| {{ exp.codigo_alumno }}</span></p>
+                  <p v-if="exp.titulo_tesis" class="text-xs text-slate-600 dark:text-slate-400 mt-1 max-w-sm hidden xl:block leading-relaxed" :title="exp.titulo_tesis">
                     {{ exp.titulo_tesis.length > 80 ? exp.titulo_tesis.substring(0, 80) + '...' : exp.titulo_tesis }}
                   </p>
                 </div>
               </div>
             </td>
             <td class="hidden md:table-cell">
-              <span :class="exp.grado_postula === 'Doctor' ? 'px-3 py-1 text-xs font-bold rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'px-3 py-1 text-xs font-bold rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-[0_0_10px_rgba(59,130,246,0.2)]'">
+              <span :class="exp.grado_postula === 'Doctor' ? 'badge badge-proceso' : 'badge badge-nuevo'">
                 {{ exp.grado_postula }}
               </span>
             </td>
             <td>
               <div class="flex items-center gap-3">
-                <div class="w-7 h-7 rounded-lg bg-slate-700/80 border border-slate-600 shadow-inner flex items-center justify-center text-xs font-black text-indigo-400 flex-shrink-0">
+                <div class="w-7 h-7 rounded-md bg-slate-100 border border-slate-300 shadow-inner flex items-center justify-center text-xs font-black text-sky-700 flex-shrink-0 dark:bg-slate-800 dark:border-slate-600 dark:text-cyan-300">
                   {{ exp.id_paso_actual }}
                 </div>
-                <span class="text-xs font-semibold text-slate-200 hidden xl:block">{{ exp.nombre_paso_actual }}</span>
+                <span class="text-xs font-semibold text-slate-700 dark:text-slate-200 hidden xl:block">{{ exp.nombre_paso_actual }}</span>
               </div>
             </td>
             <td><span :class="badgeEstado(exp.estado_expediente) + ' shadow-sm'">{{ exp.estado_expediente }}</span></td>
@@ -101,7 +112,7 @@
             </td>
             <td class="hidden lg:table-cell text-xs text-slate-400 font-mono">{{ exp.fecha_ultimo_movimiento }}</td>
             <td>
-              <button class="w-8 h-8 rounded-full bg-slate-800 hover:bg-indigo-600 text-slate-400 hover:text-white flex items-center justify-center transition-all shadow-md" @click.stop="abrirExpediente(exp)">
+              <button class="icon-btn" title="Abrir expediente" aria-label="Abrir expediente" @click.stop="abrirExpediente(exp)">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
               </button>
             </td>
@@ -130,6 +141,7 @@ const route = useRoute()
 const router = useRouter()
 const expedientes = ref([])
 const pasos = ref([])
+const anios = ref([])
 const cargando = ref(true)
 const pagina = ref(1)
 const porPagina = ref(25)
@@ -139,7 +151,10 @@ const totalPaginas = ref(1)
 const filtros = ref({
   busqueda: '',
   id_paso: route.query.id_paso ? Number(route.query.id_paso) : (route.query.paso ? Number(route.query.paso) : ''),
-  estado: route.query.estado || ''
+  estado: route.query.estado || '',
+  requisitos: route.query.requisitos || '',
+  anio: route.query.anio ? Number(route.query.anio) : '',
+  antiguedad_anios: route.query.antiguedad_anios ? Number(route.query.antiguedad_anios) : '',
 })
 
 function badgeEstado(estado) {
@@ -173,6 +188,9 @@ async function cargar() {
     const params = { page: pagina.value, per_page: porPagina.value }
     if (filtros.value.id_paso) params.id_paso = filtros.value.id_paso
     if (filtros.value.estado) params.estado = filtros.value.estado
+    if (filtros.value.requisitos) params.requisitos = filtros.value.requisitos
+    if (filtros.value.anio) params.anio = filtros.value.anio
+    if (filtros.value.antiguedad_anios) params.antiguedad_anios = filtros.value.antiguedad_anios
     if (filtros.value.busqueda.trim()) params.busqueda = filtros.value.busqueda.trim()
     const res = await api.get('/expedientes', { params })
     expedientes.value = res.data.data
@@ -186,19 +204,23 @@ async function cargar() {
 }
 
 function limpiar() {
-  filtros.value = { busqueda: '', id_paso: '', estado: '' }
+  filtros.value = { busqueda: '', id_paso: '', estado: '', requisitos: '', anio: '', antiguedad_anios: '' }
   pagina.value = 1
   cargar()
 }
 
 onMounted(async () => {
-  const [_, pasosRes] = await Promise.all([cargar(), api.get('/pasos')])
+  const [_, pasosRes, historicoRes] = await Promise.all([cargar(), api.get('/pasos'), api.get('/dashboard/seguimiento-historico')])
   pasos.value = pasosRes.data
+  anios.value = historicoRes.data.anios_disponibles || []
 })
 
 watch(() => route.query, (query) => {
   filtros.value.id_paso = query.id_paso ? Number(query.id_paso) : (query.paso ? Number(query.paso) : '')
   filtros.value.estado = query.estado || ''
+  filtros.value.requisitos = query.requisitos || ''
+  filtros.value.anio = query.anio ? Number(query.anio) : ''
+  filtros.value.antiguedad_anios = query.antiguedad_anios ? Number(query.antiguedad_anios) : ''
   pagina.value = 1
   cargar()
 })

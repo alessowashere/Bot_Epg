@@ -1,0 +1,21 @@
+[Unit]
+Description=EPG-UAC evidencia selectiva desde Google Drive
+After=network-online.target mariadb.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/sistema_posgrado/backend
+EnvironmentFile=-/opt/sistema_posgrado/backend/.env
+ExecStart=/opt/sistema_posgrado/backend/venv/bin/python /opt/sistema_posgrado/backend/drive_evidencia_pipeline.py
+ExecStartPost=/opt/sistema_posgrado/backend/venv/bin/python /opt/sistema_posgrado/backend/resoluciones_pipeline.py extraer-directorio --directorio /opt/sistema_posgrado/data/drive_evidencia/resoluciones_directas --out /opt/sistema_posgrado/data/drive_evidencia/resoluciones_directas_extraidas --paginas 6
+ExecStartPost=/opt/sistema_posgrado/backend/venv/bin/python /opt/sistema_posgrado/backend/resoluciones_pipeline.py staging --jsonl /opt/sistema_posgrado/data/drive_evidencia/resoluciones_directas_extraidas/resoluciones_extraidas.jsonl --aplicar
+ExecStartPost=/opt/sistema_posgrado/backend/venv/bin/python /opt/sistema_posgrado/backend/resoluciones_pipeline.py importar-expedientes --aplicar
+Nice=15
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+CPUQuota=55%
+MemoryHigh=1024M
+MemoryMax=1400M
+TimeoutStartSec=infinity

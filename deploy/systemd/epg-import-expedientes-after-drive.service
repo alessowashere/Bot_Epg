@@ -1,0 +1,19 @@
+[Unit]
+Description=EPG-UAC importar expedientes después de ingesta Drive
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/sistema_posgrado/backend
+EnvironmentFile=-/opt/sistema_posgrado/backend/.env
+ExecStart=/opt/sistema_posgrado/backend/venv/bin/python /opt/sistema_posgrado/backend/importar_expedientes_posterior_drive.py
+Nice=15
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+CPUQuota=45%
+MemoryHigh=1024M
+MemoryMax=1280M
+TimeoutStartSec=infinity

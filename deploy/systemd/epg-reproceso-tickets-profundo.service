@@ -1,0 +1,20 @@
+[Unit]
+Description=EPG-UAC relectura profunda local de tickets y adjuntos
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Esta unidad se inicia como root sólo para pausar/reanudar el timer; el
+# procesamiento de documentos se ejecuta con www-data y no toca osTicket.
+ExecStartPre=/bin/systemctl stop epg-bot.timer
+ExecStartPre=/bin/bash -lc 'while /bin/systemctl is-active --quiet epg-bot.service; do sleep 20; done'
+ExecStart=/usr/sbin/runuser -u www-data -- /opt/sistema_posgrado/backend/venv/bin/python /opt/sistema_posgrado/backend/reprocesar_tickets_profundo.py
+ExecStartPost=/bin/systemctl start epg-bot.timer
+Nice=12
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+CPUQuota=70%
+MemoryHigh=900M
+MemoryMax=1200M
+TimeoutStartSec=infinity
