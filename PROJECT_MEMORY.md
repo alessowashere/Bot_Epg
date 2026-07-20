@@ -646,3 +646,11 @@ sudo journalctl -u epg-bot.service -n 100 --no-pager
 - Adjuntos malformados o con extensión engañosa se registran como evidencia no extraíble sin reemplazar datos ya válidos ni detener el lote.
 - La migración `20260727_personas_academicas` introduce `personas_academicas` y enlaza cada `trayectoria_academica` a una persona canónica. DNI es la clave fuerte; por nombre ambiguo no se fusiona nada.
 - Nueva ruta interna `i12` / **Estudiantes y trayectorias**: agrupa para consulta una misma persona, pero muestra por separado sus programas, grado, código, paso, resoluciones, tickets y expedientes. Deja preparado el espacio para futuros expedientes CAI sin mezclarlos con maestría o doctorado.
+
+## Corte operativo 2026-07-20 21:18 UTC
+
+- `epg-reproceso-tickets-profundo.service` terminó correctamente. Releyó 390 tickets sin errores, materializó 1,958 trayectorias de catálogo y 3,657 vínculos persona-trayectoria, y reclasificó 185 casos. El cierre definitivo dejó 252 activos, 433 en revisión histórica y 17 en revisión de identidad; `epg-bot.timer` está activo.
+- Se corrigieron 12 estados técnicos antiguos que ya tenían relectura satisfactoria. Las colas productivas quedan en 0 procesando adjuntos, 0 errores de extracción, 44 sin expediente, 204 vinculados por clasificar y 2 en trámite de resolución.
+- El Libro anual distingue documentos firmados de borradores. Para 2026 la última firmada es 0762; existen reservas auditables 0763 y 0765, por lo que el primer número libre es 0764. Una reserva no debe presentarse como resolución emitida.
+- Secretaría puede descartar una preparación antes de remitirla: se liberan número, fecha y referencia activa al Word, mientras el evento conserva número, nombre, URL y versión anteriores. La consulta docente sólo aparece en los pasos que la requieren o si ya existe una consulta.
+- La fuente docente nueva es `/opt/DOCENTES` y no se versiona. Contiene un consolidado de 315 docentes, evidencia SUNEDU detallada y dictados 2025-II/2026-I. Debe alimentar un módulo de Coordinación EPG mediante conciliación conservadora; no se debe declarar a alguien habilitado o de baja por inferencia.

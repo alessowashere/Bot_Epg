@@ -312,6 +312,7 @@ def contexto_mesa_tramite(db, ticket, serializar_requisito):
 
 def control_numeracion(db, anio):
     consumidos = defaultdict(list)
+    firmados = set()
     documentos_extraidos = db.query(models.ResolucionDocumento).filter(
         models.ResolucionDocumento.resolucion_anio == anio,
         models.ResolucionDocumento.estado_revision.in_(["OK", "Importado"]),
@@ -327,6 +328,7 @@ def control_numeracion(db, anio):
     for documento in documentos:
         numero = _numero(documento.resolucion_numero)
         if numero:
+            firmados.add(numero)
             consumidos[numero].append(
                 {
                     "origen": "documento_firmado",
@@ -355,7 +357,15 @@ def control_numeracion(db, anio):
                 }
             )
 
-    maximo = max(consumidos, default=0)
+    ultimo_firmado = max(firmados, default=0)
+    siguiente = ultimo_firmado + 1
+    while siguiente in consumidos:
+        siguiente += 1
+    reservas = [
+        {"numero": numero, "registros": [item for item in registros if item["origen"] == "tramite_sistema"]}
+        for numero, registros in sorted(consumidos.items())
+        if numero > ultimo_firmado and any(item["origen"] == "tramite_sistema" for item in registros)
+    ]
     colisiones = [
         {"numero": numero, "registros": registros}
         for numero, registros in sorted(consumidos.items())
@@ -363,10 +373,14 @@ def control_numeracion(db, anio):
     ]
     return {
         "anio": anio,
-        "ultimo_numero_controlado": maximo or None,
-        "siguiente_disponible": f"{maximo + 1:04d}-{anio}/EPG-UAC",
+        # Se conserva la clave anterior para clientes desplegados, pero ahora
+        # representa el último documento firmado y no un borrador reservado.
+        "ultimo_numero_controlado": ultimo_firmado or None,
+        "ultimo_numero_firmado": ultimo_firmado or None,
+        "siguiente_disponible": f"{siguiente:04d}-{anio}/EPG-UAC",
         "documentos_controlados": len(documentos),
         "tramites_con_numero": len(tramites_anio),
+        "reservas_activas": reservas,
         "colisiones": colisiones,
-        "fuentes": ["Resoluciones firmadas sincronizadas", "Trámites activos del sistema"],
+        "fuentes": ["Resoluciones firmadas sincronizadas", "Borradores y reservas del sistema"],
     }

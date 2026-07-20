@@ -4449,8 +4449,8 @@ def inspeccionar_numeracion(db: Session, numero: str, tramite=None) -> dict:
             "estado": interno.estado, "bloqueante": True,
         })
     control = control_numeracion(db, anio)
-    maximo = control.get("ultimo_numero_controlado") or 0
-    es_hueco = not registros and consecutivo <= maximo
+    ultimo_firmado = control.get("ultimo_numero_firmado") or 0
+    es_hueco = not registros and consecutivo <= ultimo_firmado
     return {
         "valido": True, "numero": consecutivo, "anio": anio, "registros": registros,
         "bloquea": bool(registros), "es_hueco": es_hueco, "siguiente_sugerido": control.get("siguiente_disponible"),
@@ -5212,6 +5212,44 @@ def preparar_resolucion_tramite(
             "borrador_word_url": tramite.borrador_word_url,
             "borrador_word_nombre": tramite.borrador_word_nombre,
         },
+    )
+    db.commit()
+    return {"status": "ok", "tramite": serializar_tramite(tramite, detalle=True)}
+
+
+@app.post("/api/resolucion-tramites/{tramite_ref}/descartar-borrador")
+def descartar_borrador_resolucion(
+    tramite_ref: str,
+    payload: NotaTramitePayload,
+    db: Session = Depends(get_db),
+    current_user: models.UsuarioSistema = Depends(get_current_user),
+):
+    """Libera la numeración y vuelve a la preparación sin borrar la evidencia."""
+    tramite = obtener_tramite(db, tramite_ref)
+    if tramite.estado not in {"en_elaboracion_secretaria", "observado_por_direccion"}:
+        raise HTTPException(status_code=409, detail="Sólo se puede descartar un borrador que aún está en Secretaría.")
+    if not any((tramite.numero_resolucion, tramite.borrador_word_url, tramite.fecha_resolucion)):
+        raise HTTPException(status_code=409, detail="Este trámite no tiene un borrador preparado para descartar.")
+    anterior = tramite.estado
+    evidencia = {
+        "numero_liberado": tramite.numero_resolucion,
+        "fecha_anterior": tramite.fecha_resolucion.isoformat() if tramite.fecha_resolucion else None,
+        "borrador_anterior": tramite.borrador_word_url,
+        "borrador_nombre": tramite.borrador_word_nombre,
+        "version": tramite.borrador_version,
+    }
+    tramite.numero_resolucion = None
+    tramite.fecha_resolucion = None
+    tramite.fecha_vencimiento = None
+    tramite.borrador_word_url = None
+    tramite.borrador_word_nombre = None
+    tramite.estado = "en_elaboracion_secretaria"
+    tramite.observacion_actual = None
+    tramite.fecha_actualizacion = datetime.utcnow()
+    registrar_evento_tramite(
+        db, tramite, "borrador_descartado", current_user, anterior,
+        (payload.nota or "Borrador descartado por Secretaría; la evidencia anterior se conserva en auditoría."),
+        evidencia,
     )
     db.commit()
     return {"status": "ok", "tramite": serializar_tramite(tramite, detalle=True)}

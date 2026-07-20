@@ -163,6 +163,9 @@ POLITICAS_MUTABLES: dict[tuple[str, str], PoliticaCapacidad] = {
     ("POST", "/api/resolucion-tramites/{tramite_ref}/preparar"): politica(
         "resolucion.tramite.preparar", "Administrador", "Secretaria_Academica"
     ),
+    ("POST", "/api/resolucion-tramites/{tramite_ref}/descartar-borrador"): politica(
+        "resolucion.tramite.preparar", "Administrador", "Secretaria_Academica"
+    ),
     ("POST", "/api/resolucion-tramites/{tramite_ref}/generar-borrador"): politica(
         "resolucion.borrador.generar", "Administrador", "Secretaria_Academica"
     ),

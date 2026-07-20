@@ -20,7 +20,7 @@
       <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div class="card">
           <div class="flex flex-wrap items-center justify-between gap-3"><div><p class="eyebrow">Numeración {{ anioControl }}</p><h3 class="section-title">Libro anual de resoluciones</h3></div><select v-model.number="anioControl" class="input-field w-32" @change="cargarControl"><option v-for="anio in aniosControl" :key="anio" :value="anio">{{ anio }}</option></select></div>
-          <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4"><div><p class="text-[10px] text-slate-500">Último controlado</p><p class="mt-1 text-xl font-bold text-slate-900 dark:text-white">{{ controlNumero.ultimo_numero_controlado || '-' }}</p></div><div><p class="text-[10px] text-slate-500">Siguiente libre</p><p class="mt-1 text-sm font-bold text-sky-700 dark:text-cyan-300">{{ controlNumero.siguiente_disponible || '-' }}</p></div><div><p class="text-[10px] text-slate-500">Documentos</p><p class="mt-1 text-xl font-bold text-slate-900 dark:text-white">{{ controlNumero.documentos_controlados || 0 }}</p></div><div><p class="text-[10px] text-slate-500">Colisiones</p><p class="mt-1 text-xl font-bold" :class="controlNumero.colisiones?.length ? 'text-red-600' : 'text-emerald-600'">{{ controlNumero.colisiones?.length || 0 }}</p></div></div>
+          <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4"><div><p class="text-[10px] text-slate-500">Última firmada</p><p class="mt-1 text-xl font-bold text-slate-900 dark:text-white">{{ controlNumero.ultimo_numero_firmado || '-' }}</p></div><div><p class="text-[10px] text-slate-500">Siguiente por asignar</p><p class="mt-1 text-sm font-bold text-sky-700 dark:text-cyan-300">{{ controlNumero.siguiente_disponible || '-' }}</p></div><div><p class="text-[10px] text-slate-500">Reservas activas</p><p class="mt-1 text-xl font-bold text-slate-900 dark:text-white">{{ controlNumero.reservas_activas?.length || 0 }}</p></div><div><p class="text-[10px] text-slate-500">Colisiones</p><p class="mt-1 text-xl font-bold" :class="controlNumero.colisiones?.length ? 'text-red-600' : 'text-emerald-600'">{{ controlNumero.colisiones?.length || 0 }}</p></div></div>
         </div>
         <div class="card"><p class="eyebrow">Modelos Word</p><h3 class="section-title">7 pasos cubiertos</h3><p class="mt-2 text-xs leading-5 text-slate-500">{{ plantillasTodas.length }} familias canónicas, incluidas variantes CAI, cambios y rectificaciones.</p><button type="button" class="btn-outline btn-sm mt-3" @click="mostrarCatalogo = !mostrarCatalogo"><i class="pi pi-file-word"></i>{{ mostrarCatalogo ? 'Ocultar catálogo' : 'Ver catálogo' }}</button></div>
       </div>
@@ -102,7 +102,7 @@
 
         <div class="mt-4 flex gap-1 rounded-md bg-slate-100 p-1 dark:bg-slate-800" role="tablist">
           <button type="button" :class="subvista === 'documento' ? 'bg-white text-slate-950 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500'" class="flex-1 rounded px-3 py-2 text-xs font-semibold" @click="subvista = 'documento'"><i class="pi pi-file-word mr-1"></i>Generar resolución</button>
-          <button type="button" :class="subvista === 'consulta' ? 'bg-white text-slate-950 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500'" class="flex-1 rounded px-3 py-2 text-xs font-semibold" @click="subvista = 'consulta'"><i class="pi pi-users mr-1"></i>Consultar docentes</button>
+          <button v-if="mostrarConsulta" type="button" :class="subvista === 'consulta' ? 'bg-white text-slate-950 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500'" class="flex-1 rounded px-3 py-2 text-xs font-semibold" @click="subvista = 'consulta'"><i class="pi pi-users mr-1"></i>Consulta docente</button>
         </div>
 
         <div v-if="seleccionado.estado === 'derivado_secretaria'" class="mt-5">
@@ -131,6 +131,7 @@
           <div class="mt-3 flex flex-wrap items-center gap-2">
             <button class="btn-primary" :disabled="procesando"><i class="pi pi-save"></i> Guardar borrador</button>
             <div v-if="seleccionado.borrador_word_url" class="flex flex-wrap gap-2"><button type="button" class="btn-primary btn-sm" :disabled="procesando" @click="abrirEditorWord"><i class="pi pi-pencil"></i> Editar Word en el servidor</button><a :href="seleccionado.borrador_word_url" target="_blank" rel="noopener" class="btn-success btn-sm"><i class="pi pi-download"></i> Descargar Word v{{ seleccionado.borrador_version }}</a></div>
+            <button v-if="seleccionado.borrador_word_url || seleccionado.numero_resolucion" type="button" class="btn-danger btn-sm" :disabled="procesando" @click="descartarBorrador"><i class="pi pi-trash"></i>Descartar preparación</button>
           </div>
         </form>
 
@@ -306,6 +307,7 @@ const textoConsultaRegla = computed(() => {
   const tipos = (regla.tipos_participantes || []).join(', ')
   return `${regla.cantidad_aceptaciones ?? 'las'} aceptación(es)${tipos ? ` de ${tipos}` : ''}`
 })
+const mostrarConsulta = computed(() => Boolean(seleccionado.value?.requiere_consulta_previa || seleccionado.value?.regla_paso?.requiere_consulta_previa || seleccionado.value?.consultas?.length))
 const tramitesLote = computed(() => tramites.value.filter(item => seleccionLote.value.includes(item.uuid)))
 const puedeOperarLote = computed(() => {
   const lote = tramitesLote.value
@@ -347,10 +349,11 @@ async function cargarModelos(idPaso) {
   } catch (e) { mostrarError(e) }
 }
 async function seleccionar(item) { const res = await api.get(`/resolucion-tramites/${item.uuid}`); seleccionado.value = res.data; enlacesGenerados.value = []; cargarFormulario(); await cargarModelos(seleccionado.value.id_paso) }
-function mostrarError(e) { error.value = true; mensaje.value = e.response?.data?.detail || 'No se pudo completar la acción.' }
+function mostrarError(e) { const detalle = e.response?.data?.detail; error.value = true; mensaje.value = typeof detalle === 'string' ? detalle : detalle?.mensaje || e.response?.data?.mensaje || 'No se pudo completar la acción.' }
 async function ejecutar(fn, texto, alCompletar = null) { procesando.value = true; mensaje.value = ''; try { await fn(); error.value = false; mensaje.value = texto; await cargar(); if (alCompletar) alCompletar() } catch (e) { mostrarError(e) } finally { procesando.value = false } }
 function revisar(accion) { ejecutar(() => api.post(`/resolucion-tramites/${seleccionado.value.uuid}/revisar`, { accion, nota: notaRevision.value || null }), accion === 'Aceptar' ? 'Trámite aceptado para elaboración.' : 'El trámite volvió al tramitador con la observación.') }
 function guardarBorrador() { const form = new FormData(); form.append('numero_resolucion', preparacion.numero); form.append('fecha_resolucion', preparacion.fecha); form.append('requiere_consulta_previa', preparacion.requiere_consulta); if (preparacion.referencia_origen) form.append('referencia_origen', preparacion.referencia_origen); if (preparacion.decision_numeracion) form.append('decision_numeracion', preparacion.decision_numeracion); if (preparacion.nota_numeracion) form.append('nota_numeracion', preparacion.nota_numeracion); if (archivoWord.value) form.append('archivo_word', archivoWord.value); ejecutar(() => api.post(`/resolucion-tramites/${seleccionado.value.uuid}/preparar`, form), 'Borrador y datos guardados.') }
+function descartarBorrador() { if (!confirm('Se liberará el número y se retirará el Word de esta preparación. El historial anterior seguirá en auditoría. ¿Continuar?')) return; ejecutar(() => api.post(`/resolucion-tramites/${seleccionado.value.uuid}/descartar-borrador`, { nota: 'Preparación descartada desde la mesa de Secretaría.' }), 'La preparación fue descartada y el número quedó libre.') }
 async function cargarVistaModelo() {
   if (!modeloSeleccionadoId.value || !seleccionado.value) return
   procesando.value = true

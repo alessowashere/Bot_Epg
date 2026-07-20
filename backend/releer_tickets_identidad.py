@@ -71,6 +71,7 @@ def ejecutar(aplicar: bool, lote: int, forzar: bool = False, workers: int = 1) -
             for ticket in tickets
         ]
         reporte = []
+        fallos = {}
         total = len(tickets)
         tamanio_lote = 24
         _guardar_progreso(estado='ejecutando', total=total, procesados=0, errores=0, inicio=datetime.utcnow().isoformat())
@@ -108,6 +109,9 @@ def ejecutar(aplicar: bool, lote: int, forzar: bool = False, workers: int = 1) -
                         'fecha_extraccion': datetime.utcnow().isoformat(), 'origen_relectura': MARCA_RELECTURA,
                     }
                     ticket.fecha_extraccion = datetime.utcnow()
+                    # Una lectura integral satisfactoria reemplaza estados técnicos
+                    # antiguos; de otro modo la UI sigue mostrando errores ya resueltos.
+                    ticket.estado_scraping = "Datos_Extraidos"
                     codigo = normalizar_codigo_matricula(lectura['estructurados'].get('codigo_alumno') or lectura['resumen'].get('datos_alumno', {}).get('codigo'))
                     if not ticket.codigo_alumno_osticket and codigo:
                         ticket.codigo_alumno_osticket = codigo
@@ -120,7 +124,7 @@ def ejecutar(aplicar: bool, lote: int, forzar: bool = False, workers: int = 1) -
                 inicio=datetime.utcnow().isoformat(),
             )
         _guardar_progreso(estado='completado', total=total, procesados=total, errores=sum(1 for item in reporte if item['estado'] == 'error'), fin=datetime.utcnow().isoformat())
-        return {'modo': 'aplicar' if aplicar else 'simulacion', 'marca_relectura': MARCA_RELECTURA, 'tickets_releidos': sum(1 for item in reporte if item['estado'] == 'ok'), 'errores': len(fallos), 'pendientes_restantes': max(0, len(pendientes) - len(tickets)), 'con_adjuntos_leidos': sum(1 for x in reporte if x['estado'] == 'ok' and x['archivos_leidos']), 'grados_actualizados': sum(1 for x in reporte if x['estado'] == 'ok' and x['grado_antes'] != x['grado_despues']), 'reporte': str(REPORTE)}
+        return {'modo': 'aplicar' if aplicar else 'simulacion', 'marca_relectura': MARCA_RELECTURA, 'tickets_releidos': sum(1 for item in reporte if item['estado'] == 'ok'), 'errores': sum(1 for item in reporte if item['estado'] == 'error'), 'pendientes_restantes': max(0, len(pendientes) - len(tickets)), 'con_adjuntos_leidos': sum(1 for x in reporte if x['estado'] == 'ok' and x['archivos_leidos']), 'grados_actualizados': sum(1 for x in reporte if x['estado'] == 'ok' and x['grado_antes'] != x['grado_despues']), 'reporte': str(REPORTE)}
     except Exception:
         db.rollback(); raise
     finally: db.close()

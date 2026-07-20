@@ -655,3 +655,14 @@ npm run build
 - [x] Corregir `1,628` fechas históricas a partir de la cabecera del PDF, no del año de numeración, carpeta ni Excel. Ejemplo validado: resolución `0764-2016` pasó de `2026-06-30` a `2016-12-01` por la cabecera `Cusco, 01 de Diciembre del 2016`.
 - [x] Crear `backend/corregir_fechas_resoluciones.py`, idempotente y con reporte `data/reportes/correccion_fechas_cabecera.csv`, para reejecutar la conciliación cuando ingrese nuevo acervo.
 - [x] Crear backup previo `backups/pre_correccion_fechas_cabecera_20260720_193911.sql` (53 MB).
+
+## Cierre del reproceso y control de Secretaría - 2026-07-20 21:18 UTC
+
+- [x] Completar la relectura local: `390/390` tickets, `0` errores de lectura; luego materializar `3,657` trayectorias y reclasificar `185` tickets.
+- [x] Reparar estados técnicos obsoletos: `Procesando adjuntos = 0`, `Revisar error = 0`, `Sin expediente = 44`. El timer rutinario volvió a `active`.
+- [x] Separar en numeración la última resolución firmada (`0762`) de las reservas internas (`0763` y `0765`). El primer correlativo libre es `0764-2026/EPG-UAC`.
+- [x] Mostrar errores estructurados como mensajes legibles y añadir `Descartar preparación`, con confirmación, liberación de número y auditoría sin borrar la evidencia anterior.
+- [x] Mostrar la consulta docente sólo cuando la regla o una consulta existente la requieren.
+- [ ] Crear el módulo de **Coordinación EPG / Docentes** con padrón, grados SUNEDU, afinidad por programa, actividad por periodo y trámites MPV/físicos.
+- [ ] Importar y conciliar los tres Excel de `/opt/DOCENTES`: 315 docentes consolidados, 245 registros SUNEDU y 282 registros mensuales de dictado. No reemplazar automáticamente los 1,701 docentes históricos sin conciliación por DNI/correo/nombre.
+- [ ] Mantener “tres años desde el grado” como regla institucional configurable y pendiente de documento interno; la Ley Universitaria vigente exige el grado según nivel, pero no sustenta por sí sola ese umbral.
