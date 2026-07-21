@@ -602,7 +602,7 @@ sudo journalctl -u epg-bot.service -n 100 --no-pager
 - Los archivos de requisitos ya no son una sola URL: `expediente_requisito_archivos` conserva varios adjuntos de ticket o cargas locales por requisito, con origen y usuario.
 - La carpeta `/opt/CARPETA DE SECRETARÍA ACADEMICA` se analizó completa. Hay 647 Word; 461 son resoluciones clasificables y el catálogo canónico cubre los siete pasos más variantes CAI, cambios, rectificaciones, ampliaciones y Consejo EPG. Los originales no se modifican.
 - El generador oficial usa esas copias Word y reemplaza datos dentro de párrafos, tablas, cabeceras y pies, aun si el texto está fragmentado entre `runs`. La vista previa es de contenido; el DOCX descargado conserva el formato fuente.
-- El control de numeración separa la serie principal EPG de Consejo, oficios, informes y carpetas de tránsito. La evidencia firmada alcanza 0762 y un trámite local ya ocupa 0765; el siguiente sugerido es 0766-2026/EPG-UAC.
+- El control de numeración separa la serie principal EPG de Consejo, oficios, informes y carpetas de tránsito. La evidencia firmada alcanza 0762; las reservas de prueba posteriores fueron liberadas y el siguiente sugerido es 0763-2026/EPG-UAC.
 - Secretaría tiene dos espacios distintos: generación de resolución y consulta a docentes. Las consultas admiten institucional, personal o ambos, modalidad configurable y mensajes propios. El enlace público usa `EPG_PUBLIC_BASE_URL` para no romperse detrás de `/bot-posgrado`.
 - Dirección conserva su circuito: descarga del Word, revisión/ReFirma externa, carga del PDF y devolución al tramitador. No se enviaron correos ni se ejecutaron acciones externas en osTicket.
 - Migración aplicada: `20260725_mesa_tramite_operativa`; backup previo `pre_mesa_secretaria_plantillas_20260720_135457.sql`. Guía: `docs/operacion/MESA_TRAMITE_SECRETARIA_20260720.md`.
@@ -651,7 +651,7 @@ sudo journalctl -u epg-bot.service -n 100 --no-pager
 
 - `epg-reproceso-tickets-profundo.service` terminó correctamente. Releyó 390 tickets sin errores, materializó 1,958 trayectorias de catálogo y 3,657 vínculos persona-trayectoria, y reclasificó 185 casos. El cierre definitivo dejó 252 activos, 433 en revisión histórica y 17 en revisión de identidad; `epg-bot.timer` está activo.
 - Se corrigieron 12 estados técnicos antiguos que ya tenían relectura satisfactoria. Las colas productivas quedan en 0 procesando adjuntos, 0 errores de extracción, 44 sin expediente, 204 vinculados por clasificar y 2 en trámite de resolución.
-- El Libro anual distingue documentos firmados de borradores. Para 2026 la última firmada es 0762; existen reservas auditables 0763 y 0765, por lo que el primer número libre es 0764. Una reserva no debe presentarse como resolución emitida.
+- El Libro anual distingue documentos firmados de borradores. Para 2026 la última firmada es 0762 y el primer número libre es 0763. Las reservas de prueba 0763/0765 se retiraron conservando su evento histórico.
 - Secretaría puede descartar una preparación antes de remitirla: se liberan número, fecha y referencia activa al Word, mientras el evento conserva número, nombre, URL y versión anteriores. La consulta docente sólo aparece en los pasos que la requieren o si ya existe una consulta.
 - La fuente docente nueva es `/opt/DOCENTES` y no se versiona. Contiene un consolidado de 315 docentes, evidencia SUNEDU detallada y dictados 2025-II/2026-I. Debe alimentar un módulo de Coordinación EPG mediante conciliación conservadora; no se debe declarar a alguien habilitado o de baja por inferencia.
 
@@ -663,4 +663,14 @@ sudo journalctl -u epg-bot.service -n 100 --no-pager
 - Los archivos docentes quedan privados y se descargan por endpoint autenticado. PDF/DOCX intentan extracción de texto para futuras búsquedas, pero toda habilitación sigue requiriendo validación humana.
 - `DOCENTE_ANTIGUEDAD_GRADO_ANIOS` controla el umbral interno (3 por defecto). No debe presentarse como mandato legal mientras falte el documento institucional que lo sustente.
 - Las consultas de Secretaría registran primer/último acceso y cantidad de aperturas. El envío automático sigue apagado: se genera una invitación trazable para envío manual hasta configurar cuenta institucional y aprobación externa.
-- Numeración 2026: firmada 0762; 0763 y 0765 son reservas locales visibles y navegables; 0764 es el primer hueco libre.
+- Numeración 2026: firmada 0762. Las reservas locales de prueba 0763 y 0765 fueron retiradas el 21 de julio con auditoría; 0763 vuelve a ser el siguiente correlativo sugerido.
+
+## Gestión docente integral - 2026-07-21
+
+- La columna `ESPECIALIDAD` de `Relacion de Docentes EPG UAC ACTUALIZADO.xlsx` no se importaba. Se corrigió el cruce por nombre normalizado y DNI: las 222 filas con especialidad quedaron cargadas. Los demás son históricos o docentes presentes sólo en el consolidado y no reciben un valor inventado.
+- Las hojas `Doc - ...` y `Mst - ...` representan campos de afinidad, no programas UAC concretos. `programas_posgrado` contiene por separado el catálogo oficial vigente: 15 maestrías y 7 doctorados.
+- `docente_actividades` conserva 283 participaciones en 281 filas mensuales con mes, período académico, fuente y una advertencia honesta: los Excel no identifican asignatura.
+- La Mesa de gestión docente (`i7`) tiene Padrón, Programas y cobertura, Actividad, Trámites y Actualización docente. Los trámites conservan archivos privados y bitácora.
+- El autoservicio `/d/:token` permite proponer cambios sin credenciales y con vencimiento. La propuesta no modifica el padrón hasta aprobación de Coordinación; crear el enlace no envía correo.
+- La consulta SUNEDU pública exige CAPTCHA. El sistema abre la fuente oficial y copia el DNI; la constancia se adjunta a la ficha. Para consulta masiva se necesita PIDE o Web Service institucional, no scraping.
+- Migraciones aplicadas: `20260730_gestion_docente_integral` y `20260731_expediente_tramite_docente`. Backup previo: `backups/pre_coordinacion_docente_20260721_130455.sql`.

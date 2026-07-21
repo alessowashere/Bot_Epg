@@ -103,6 +103,7 @@ class Docente(Base):
     estado = Column(Enum("Activo", "Inactivo", "De Licencia"), default="Activo")
     max_tesis_permitidas = Column(Integer, default=5)
     telefono = Column(String(40), nullable=True)
+    direccion = Column(String(255), nullable=True)
     condicion_laboral = Column(String(100), nullable=True)
     titulo_profesional = Column(Text, nullable=True)
     universidad_procedencia = Column(Text, nullable=True)
@@ -115,6 +116,19 @@ class Docente(Base):
     programas = relationship("DocentePrograma", back_populates="docente", cascade="all, delete-orphan")
     actividades = relationship("DocenteActividad", back_populates="docente", cascade="all, delete-orphan")
     documentos = relationship("DocenteDocumento", back_populates="docente", cascade="all, delete-orphan")
+    actualizaciones = relationship("DocenteActualizacion", back_populates="docente", cascade="all, delete-orphan")
+
+
+class ProgramaPosgrado(Base):
+    __tablename__ = "programas_posgrado"
+
+    id_programa = Column(Integer, primary_key=True, autoincrement=True)
+    nivel = Column(String(20), nullable=False, index=True)
+    nombre = Column(String(250), nullable=False, unique=True, index=True)
+    slug = Column(String(250), nullable=True)
+    url_fuente = Column(String(500), nullable=True)
+    activo = Column(Boolean, nullable=False, default=True, index=True)
+    fecha_sincronizacion = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
 class DocenteGrado(Base):
@@ -137,12 +151,15 @@ class DocentePrograma(Base):
     __table_args__ = (UniqueConstraint("id_docente", "nivel", "programa", name="uq_docente_programa"),)
     id_programa_docente = Column(Integer, primary_key=True, autoincrement=True)
     id_docente = Column(Integer, ForeignKey("docentes.id_docente", ondelete="CASCADE"), nullable=False, index=True)
+    id_programa_catalogo = Column(Integer, ForeignKey("programas_posgrado.id_programa", ondelete="SET NULL"), nullable=True, index=True)
     nivel = Column(String(20), nullable=False, index=True)
     programa = Column(String(200), nullable=False, index=True)
+    tipo_vinculo = Column(String(30), nullable=False, default="Afinidad", index=True)
     especialidad = Column(String(200), nullable=True)
     estado = Column(String(30), nullable=False, default="Propuesto")
     fuente = Column(String(120), nullable=False, default="Padron EPG")
     docente = relationship("Docente", back_populates="programas")
+    catalogo = relationship("ProgramaPosgrado", foreign_keys=[id_programa_catalogo])
 
 
 class DocenteActividad(Base):
@@ -151,7 +168,11 @@ class DocenteActividad(Base):
     id_actividad = Column(Integer, primary_key=True, autoincrement=True)
     id_docente = Column(Integer, ForeignKey("docentes.id_docente", ondelete="CASCADE"), nullable=False, index=True)
     periodo = Column(String(20), nullable=False, index=True)
+    mes = Column(String(20), nullable=True, index=True)
+    periodo_academico = Column(String(40), nullable=True, index=True)
+    tipo_actividad = Column(String(60), nullable=False, default="Dictado")
     programa = Column(String(200), nullable=False, default="Sin especificar")
+    detalle = Column(Text, nullable=True)
     registros = Column(Integer, nullable=False, default=1)
     fuente = Column(String(120), nullable=False, default="Programacion academica")
     docente = relationship("Docente", back_populates="actividades")
@@ -172,6 +193,34 @@ class DocenteTramite(Base):
     fecha_actualizacion = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     creado_por_nombre = Column(String(150), nullable=True)
     docente = relationship("Docente", foreign_keys=[id_docente])
+    documentos = relationship("DocenteTramiteDocumento", back_populates="tramite", cascade="all, delete-orphan")
+    eventos = relationship("DocenteTramiteEvento", back_populates="tramite", cascade="all, delete-orphan", order_by="DocenteTramiteEvento.fecha_registro")
+
+
+class DocenteTramiteDocumento(Base):
+    __tablename__ = "docente_tramite_documentos"
+    id_documento = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), unique=True, nullable=False, default=nuevo_uuid, index=True)
+    id_tramite_docente = Column(Integer, ForeignKey("docente_tramites.id_tramite_docente", ondelete="CASCADE"), nullable=False, index=True)
+    nombre_archivo = Column(String(255), nullable=False)
+    ruta_archivo = Column(String(500), nullable=False)
+    hash_sha256 = Column(String(64), nullable=False, index=True)
+    cargado_por_nombre = Column(String(150), nullable=True)
+    fecha_carga = Column(DateTime, nullable=False, default=datetime.utcnow)
+    tramite = relationship("DocenteTramite", back_populates="documentos")
+
+
+class DocenteTramiteEvento(Base):
+    __tablename__ = "docente_tramite_eventos"
+    id_evento = Column(Integer, primary_key=True, autoincrement=True)
+    id_tramite_docente = Column(Integer, ForeignKey("docente_tramites.id_tramite_docente", ondelete="CASCADE"), nullable=False, index=True)
+    accion = Column(String(60), nullable=False)
+    estado_anterior = Column(String(30), nullable=True)
+    estado_nuevo = Column(String(30), nullable=True)
+    nota = Column(Text, nullable=True)
+    usuario_nombre = Column(String(150), nullable=True)
+    fecha_registro = Column(DateTime, nullable=False, default=datetime.utcnow)
+    tramite = relationship("DocenteTramite", back_populates="eventos")
 
 
 class DocenteDocumento(Base):
@@ -189,6 +238,26 @@ class DocenteDocumento(Base):
     cargado_por_nombre = Column(String(150), nullable=True)
     fecha_carga = Column(DateTime, nullable=False, default=datetime.utcnow)
     docente = relationship("Docente", back_populates="documentos")
+
+
+class DocenteActualizacion(Base):
+    __tablename__ = "docente_actualizaciones"
+
+    id_actualizacion = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), unique=True, nullable=False, default=nuevo_uuid, index=True)
+    id_docente = Column(Integer, ForeignKey("docentes.id_docente", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), unique=True, nullable=False, index=True)
+    estado = Column(String(30), nullable=False, default="Pendiente_envio", index=True)
+    correos_destino = Column(JSON, nullable=True)
+    payload_propuesto = Column(JSON, nullable=True)
+    nota_revision = Column(Text, nullable=True)
+    fecha_expiracion = Column(DateTime, nullable=False)
+    fecha_primer_acceso = Column(DateTime, nullable=True)
+    fecha_envio = Column(DateTime, nullable=True)
+    fecha_respuesta = Column(DateTime, nullable=True)
+    fecha_revision = Column(DateTime, nullable=True)
+    creado_por_nombre = Column(String(150), nullable=True)
+    docente = relationship("Docente", back_populates="actualizaciones")
 
 
 class ExpedienteTesis(Base):

@@ -605,7 +605,7 @@ npm run build
 - [x] Separar en Secretaría `Generar resolución` y `Consultar docentes`; permitir correo institucional, personal o ambos, modalidad de respuesta y mensajes reutilizables.
 - [x] Catalogar la carpeta completa de Secretaría: `647` DOCX, `461` resoluciones clasificadas y cobertura base de P1 a P7. El reporte está en `data/plantillas_resolucion/REPORTE_CATALOGO.md`.
 - [x] Generar Word desde una copia canónica preservando estilos, tablas, cabeceras y pies; reemplazar campos aunque Word los divida en varios `runs`.
-- [x] Crear control anual paginado de resoluciones, con filtros, apertura protegida, colisiones y sugerencia de numeración. Siguiente controlado actual: `0766-2026/EPG-UAC`.
+- [x] Crear control anual paginado de resoluciones, con filtros, apertura protegida, colisiones y sugerencia de numeración. Tras retirar las pruebas 0763/0765, el siguiente correlativo es `0763-2026/EPG-UAC`.
 - [x] Ajustar menús para Recepción, Secretaría Académica y Dirección según su trabajo real.
 - [x] Aplicar migración `20260725_mesa_tramite_operativa` tras backup `backups/pre_mesa_secretaria_plantillas_20260720_135457.sql`.
 - [ ] Validación humana inicial por Secretaría de la redacción legal de cada familia canónica antes de emitir una resolución real.
@@ -660,7 +660,7 @@ npm run build
 
 - [x] Completar la relectura local: `390/390` tickets, `0` errores de lectura; luego materializar `3,657` trayectorias y reclasificar `185` tickets.
 - [x] Reparar estados técnicos obsoletos: `Procesando adjuntos = 0`, `Revisar error = 0`, `Sin expediente = 44`. El timer rutinario volvió a `active`.
-- [x] Separar en numeración la última resolución firmada (`0762`) de las reservas internas (`0763` y `0765`). El primer correlativo libre es `0764-2026/EPG-UAC`.
+- [x] Separar en numeración la última resolución firmada (`0762`) de las reservas internas. Las reservas de prueba `0763` y `0765` fueron retiradas con auditoría; el primer correlativo libre es `0763-2026/EPG-UAC`.
 - [x] Mostrar errores estructurados como mensajes legibles y añadir `Descartar preparación`, con confirmación, liberación de número y auditoría sin borrar la evidencia anterior.
 - [x] Mostrar la consulta docente sólo cuando la regla o una consulta existente la requieren.
 - [x] Crear el módulo de **Coordinación EPG / Docentes** con padrón, grados SUNEDU, afinidad por programa, actividad por periodo, evidencias y trámites MPV/físicos/internos.
@@ -672,7 +672,19 @@ npm run build
 - [x] Crear rol `Coordinacion_EPG` y cuenta Google `coordinacion_epg@uandina.edu.pe` (`coordinacion_epg`, sin contraseña local).
 - [x] Publicar una interfaz para buscar/filtrar, revisar ficha, estado y especialidad, cargar CV/SUNEDU/constancias, validar documentos, registrar afinidades y atender trámites.
 - [x] Registrar en consultas docentes correo elegido, vencimiento, primer/último acceso, cantidad de aperturas, respuesta y evidencia.
-- [x] Mostrar las reservas 0763 y 0765 con persona, estado y acceso al trabajo. La última firmada sigue siendo 0762 y el primer hueco libre es 0764.
+- [x] Retirar las reservas de prueba 0763 y 0765 conservando evento auditable. La última firmada sigue siendo 0762 y el siguiente número sugerido es 0763.
 - [x] Aplicar migraciones `20260728_coordinacion_docentes` y `20260729_documentos_seguimiento_docentes`; respaldos `pre_importacion_padron_docentes_20260720_2132.sql` y `pre_padron_docentes_20260720_213611.sql`.
 - [ ] Revisar datos anómalos de fuente desde la interfaz (correo, DNI, grado o afinidad) y marcar cada ficha `Verificado` u `Observado`; no corregir por intuición.
 - [ ] Configurar y aprobar una cuenta institucional de salida antes de enviar consultas automáticamente. Hoy el enlace se genera, registra y rastrea, pero se remite manualmente.
+
+## Gestión docente integral - 2026-07-21
+
+- [x] Corregir el importador para usar la columna explícita `ESPECIALIDAD`: 222 filas fuente cargadas; los históricos que no aparecen en ese Excel quedan pendientes, sin datos inventados.
+- [x] Cargar catálogo oficial de 15 maestrías y 7 doctorados, separado de las afinidades amplias del Excel.
+- [x] Reorganizar `i7` en Padrón, Programas y cobertura, Actividad, Trámites y Actualización docente.
+- [x] Explicar la actividad mensual con período, fuente y limitación de asignatura; conservar 283 participaciones en 281 filas mensuales.
+- [x] Añadir expediente documental y bitácora a cada trámite docente.
+- [x] Añadir consulta SUNEDU asistida con DNI y carga posterior de constancia; no automatizar el CAPTCHA.
+- [x] Añadir enlaces temporales para que el docente proponga cambios y una cola de aprobación por Coordinación. El envío automático continúa apagado.
+- [ ] Solicitar acceso institucional a PIDE o al Web Service SUNEDU para verificación masiva.
+- [ ] Integrar una fuente de programación que incluya asignatura/curso; los Excel actuales sólo entregan mes y período.

@@ -29,7 +29,7 @@ Resultados: `data/plantillas_resolucion/catalogo.json`, `inventario.jsonl`, `REP
 
 ## Numeración
 
-El control anual usa la serie principal `EPG-UAC`, excluyendo oficios, informes, copias de tránsito y la serie de Consejo. Al corte actual, los PDF firmados llegan a `0762-2026`; existe un trámite interno con `0765-2026`, por lo que el siguiente número controlado es `0766-2026/EPG-UAC`.
+El control anual usa la serie principal `EPG-UAC`, excluyendo oficios, informes, copias de tránsito y la serie de Consejo. Al corte del 21 de julio, los PDF firmados llegan a `0762-2026`; las reservas de prueba 0763 y 0765 fueron retiradas con auditoría, por lo que el siguiente número controlado es `0763-2026/EPG-UAC`.
 
 Las colisiones son números repetidos entre el archivo firmado y/o un trámite interno. Se muestran con la persona, tipo y archivo involucrado antes de guardar. Se resuelven en **Secretaría Académica > Bandeja de trabajo**, no modificando el repositorio histórico.
 

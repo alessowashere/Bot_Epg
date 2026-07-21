@@ -1,0 +1,18 @@
+<template>
+  <main class="min-h-screen bg-slate-100 p-4 dark:bg-slate-950 md:p-8">
+    <section class="mx-auto max-w-2xl rounded-md border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <header class="border-b border-slate-200 pb-5 dark:border-slate-700"><p class="eyebrow">Universidad Andina del Cusco · EPG</p><h1 class="mt-1 text-2xl font-bold text-slate-950 dark:text-white">Actualización de ficha docente</h1><p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Revisa tus datos y envía únicamente los cambios. Coordinación validará la información antes de incorporarla.</p></header>
+      <div v-if="cargando" class="py-14 text-center text-slate-500">Validando enlace...</div>
+      <div v-else-if="error" class="mt-5 rounded border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950/30 dark:text-red-200">{{error}}</div>
+      <div v-else-if="enviado" class="mt-5 rounded border border-emerald-300 bg-emerald-50 p-5 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100"><strong>Información recibida</strong><p class="mt-1 text-sm">Coordinación EPG revisará los cambios antes de actualizar el padrón.</p></div>
+      <form v-else class="mt-5 space-y-4" @submit.prevent="enviar"><div><p class="input-label">Docente</p><p class="font-semibold text-slate-950 dark:text-white">{{ficha.docente}}</p><p class="text-xs text-slate-500">Enlace vigente hasta {{fecha(ficha.fecha_expiracion)}}</p></div><div class="grid gap-4 md:grid-cols-2"><label><span class="input-label">Correo institucional</span><input v-model="form.correo_institucional" type="email" class="input-field mt-1" /></label><label><span class="input-label">Correo personal</span><input v-model="form.correo_personal" type="email" class="input-field mt-1" /></label><label><span class="input-label">Teléfono</span><input v-model="form.telefono" class="input-field mt-1" /></label><label><span class="input-label">Especialidad</span><input v-model="form.especialidad" class="input-field mt-1" /></label></div><label><span class="input-label">Dirección</span><input v-model="form.direccion" class="input-field mt-1" /></label><label><span class="input-label">Nota para Coordinación</span><textarea v-model="form.nota" class="input-field mt-1 min-h-24" placeholder="Aclara cualquier cambio o dato pendiente"></textarea></label><div class="flex justify-end"><button class="btn-primary" :disabled="guardando"><i class="pi pi-send"></i>{{guardando?'Enviando...':'Enviar para revisión'}}</button></div></form>
+    </section>
+  </main>
+</template>
+<script setup>
+import {onMounted,reactive,ref} from 'vue';import {useRoute} from 'vue-router';import api from '../api.js'
+const route=useRoute(),cargando=ref(true),guardando=ref(false),enviado=ref(false),error=ref(''),ficha=ref({}),form=reactive({correo_institucional:'',correo_personal:'',telefono:'',direccion:'',especialidad:'',nota:''})
+onMounted(async()=>{try{ficha.value=(await api.get(`/actualizacion-docente/${route.params.token}`)).data;Object.assign(form,{correo_institucional:ficha.value.correo_institucional||'',correo_personal:ficha.value.correo_personal||'',telefono:ficha.value.telefono||'',direccion:ficha.value.direccion||'',especialidad:ficha.value.especialidad||'',nota:''})}catch(e){error.value=e.response?.data?.detail||'El enlace no es válido o ya venció.'}finally{cargando.value=false}})
+async function enviar(){guardando.value=true;try{await api.post(`/actualizacion-docente/${route.params.token}`,form);enviado.value=true}catch(e){error.value=e.response?.data?.detail||'No se pudo enviar la información.'}finally{guardando.value=false}}
+function fecha(v){return v?new Date(v).toLocaleString('es-PE'):'-'}
+</script>

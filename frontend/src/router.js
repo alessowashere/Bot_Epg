@@ -26,6 +26,7 @@ const ReglasResolucionesView = () => import('./views/ReglasResolucionesView.vue'
 const GuiaOperacionView = () => import('./views/GuiaOperacionView.vue')
 const ConciliacionIdentidadesView = () => import('./views/ConciliacionIdentidadesView.vue')
 const EstudiantesView = () => import('./views/EstudiantesView.vue')
+const ActualizacionDocenteView = () => import('./views/ActualizacionDocenteView.vue')
 
 const routes = [
   { path: '/a0', name: 'login', component: LoginView, meta: { publico: true } },
@@ -40,6 +41,7 @@ const routes = [
   { path: '/i5', name: 'directora', component: DirectoraView, meta: { requiereAuth: true, soloDirectora: true } },
   { path: '/i6', name: 'secretaria', component: SecretariaView, meta: { requiereAuth: true, soloSecretaria: true } },
   { path: '/v/:token', name: 'consulta-resolucion', component: ConsultaDisponibilidadView, meta: { publico: true, admiteSesion: true } },
+  { path: '/d/:token', name: 'actualizacion-docente', component: ActualizacionDocenteView, meta: { publico: true, admiteSesion: true } },
   { path: '/q/:uuid_asignacion', name: 'dictaminante', component: DictaminanteView, meta: { publico: true } },
   { path: '/i7', name: 'docentes', component: DocentesView, meta: { requiereAuth: true, soloCoordinacion: true } },
   { path: '/i8', name: 'usuarios', component: UsuariosView, meta: { requiereAuth: true, soloAdmin: true } },

@@ -272,6 +272,7 @@ PUBLIC_API_PREFIXES = (
     "/api/auth/google/",
     "/api/dictaminante/",
     "/api/consultas-resolucion/",
+    "/api/actualizacion-docente/",
     # El editor Word no conoce la sesión del navegador. Estas dos rutas se
     # protegen con una firma HMAC corta y el JWT propio de OnlyOffice.
     "/api/onlyoffice/",
@@ -506,6 +507,8 @@ class DocenteVerificacionPayload(BaseModel):
 class DocenteProgramaPayload(BaseModel):
     nivel: str
     programa: str
+    id_programa_catalogo: Optional[int] = None
+    tipo_vinculo: str = Field("Programa_UAC", pattern="^(Programa_UAC|Afinidad)$")
     especialidad: Optional[str] = None
     estado: str = "Validado"
 
@@ -513,6 +516,25 @@ class DocenteProgramaPayload(BaseModel):
 class DocenteDocumentoRevisionPayload(BaseModel):
     estado: str
     nota: Optional[str] = None
+
+
+class DocenteActualizacionCrearPayload(BaseModel):
+    canal_correo: str = Field("ambos", pattern="^(institucional|personal|ambos)$")
+    vigencia_dias: int = Field(15, ge=1, le=90)
+
+
+class DocenteActualizacionResponderPayload(BaseModel):
+    correo_institucional: Optional[str] = Field(None, max_length=150)
+    correo_personal: Optional[str] = Field(None, max_length=150)
+    telefono: Optional[str] = Field(None, max_length=40)
+    direccion: Optional[str] = Field(None, max_length=255)
+    especialidad: Optional[str] = Field(None, max_length=150)
+    nota: Optional[str] = Field(None, max_length=1000)
+
+
+class DocenteActualizacionRevisarPayload(BaseModel):
+    accion: str = Field(..., pattern="^(Aprobar|Observar|Rechazar)$")
+    nota: Optional[str] = Field(None, max_length=1000)
 
 
 class RegistrarNotificacionPayload(BaseModel):
@@ -5791,7 +5813,7 @@ def serializar_docente_operativo(docente, db, detalle=False):
     data = {
         "id_docente": docente.id_docente, "dni": docente.dni, "nombre_completo": docente.nombre_completo,
         "correo": docente.correo, "correo_institucional": docente.correo_institucional, "correo_personal": docente.correo_personal,
-        "telefono": docente.telefono, "especialidad": docente.especialidad, "tipo_contrato": docente.tipo_contrato,
+        "telefono": docente.telefono, "direccion": docente.direccion, "especialidad": docente.especialidad, "tipo_contrato": docente.tipo_contrato,
         "condicion_laboral": docente.condicion_laboral, "estado": docente.estado,
         "estado_verificacion": docente.estado_verificacion, "fecha_verificacion": docente.fecha_verificacion.isoformat() if docente.fecha_verificacion else None,
         "titulo_profesional": docente.titulo_profesional, "universidad_procedencia": docente.universidad_procedencia,
@@ -5803,9 +5825,10 @@ def serializar_docente_operativo(docente, db, detalle=False):
     if detalle:
         data.update({
             "grados": [{"id_grado":g.id_grado,"tipo":g.tipo,"denominacion":g.denominacion,"universidad":g.universidad,"pais":g.pais,"fecha_diploma":g.fecha_diploma.isoformat() if g.fecha_diploma else None,"fuente":g.fuente,"verificado":g.verificado} for g in docente.grados],
-            "programas": [{"id_programa_docente":p.id_programa_docente,"nivel":p.nivel,"programa":p.programa,"especialidad":p.especialidad,"estado":p.estado,"fuente":p.fuente} for p in docente.programas],
-            "actividades": [{"periodo":a.periodo,"programa":a.programa,"registros":a.registros} for a in docente.actividades],
+            "programas": [{"id_programa_docente":p.id_programa_docente,"id_programa_catalogo":p.id_programa_catalogo,"nivel":p.nivel,"programa":p.programa,"tipo_vinculo":p.tipo_vinculo,"especialidad":p.especialidad,"estado":p.estado,"fuente":p.fuente} for p in docente.programas],
+            "actividades": [{"periodo":a.periodo,"mes":a.mes,"periodo_academico":a.periodo_academico,"tipo_actividad":a.tipo_actividad,"programa":a.programa,"detalle":a.detalle,"registros":a.registros,"fuente":a.fuente} for a in sorted(docente.actividades,key=lambda x:x.periodo or "",reverse=True)],
             "documentos": [{"uuid":d.uuid,"tipo":d.tipo,"nombre_archivo":d.nombre_archivo,"estado_revision":d.estado_revision,"nota_revision":d.nota_revision,"fecha_carga":d.fecha_carga.isoformat() if d.fecha_carga else None,"tiene_texto":bool(d.texto_extraido)} for d in docente.documentos],
+            "actualizaciones": [{"uuid":a.uuid,"estado":a.estado,"correos_destino":a.correos_destino or [],"fecha_expiracion":a.fecha_expiracion.isoformat(),"fecha_primer_acceso":a.fecha_primer_acceso.isoformat() if a.fecha_primer_acceso else None,"fecha_respuesta":a.fecha_respuesta.isoformat() if a.fecha_respuesta else None,"payload_propuesto":a.payload_propuesto} for a in sorted(docente.actualizaciones,key=lambda x:x.id_actualizacion,reverse=True)],
         })
     return data
 
@@ -5828,7 +5851,34 @@ def listar_docentes(busqueda: Optional[str]=None, nivel: Optional[str]=None, pro
 
 @app.get("/api/docentes/resumen")
 def resumen_docentes(db: Session = Depends(get_db)):
-    return {"total":db.query(models.Docente).count(),"padron_epg":db.query(models.Docente).filter(models.Docente.estado_verificacion=="Padron_EPG").count(),"activos":db.query(models.Docente).filter(models.Docente.estado=="Activo").count(),"con_sunedu":db.query(models.Docente).filter(models.Docente.grados.any(models.DocenteGrado.verificado==True)).count(),"maestria":db.query(models.Docente).filter(models.Docente.programas.any(models.DocentePrograma.nivel=="Maestria")).count(),"doctorado":db.query(models.Docente).filter(models.Docente.programas.any(models.DocentePrograma.nivel=="Doctorado")).count(),"tramites_pendientes":db.query(models.DocenteTramite).filter(models.DocenteTramite.estado.in_(["Recibido","En_revision","Observado"])).count()}
+    padron=db.query(models.Docente).filter(models.Docente.estado_verificacion=="Padron_EPG")
+    return {"total":db.query(models.Docente).count(),"padron_epg":padron.count(),"activos":padron.filter(models.Docente.estado=="Activo").count(),"especialidad_pendiente":padron.filter(or_(models.Docente.especialidad.is_(None),models.Docente.especialidad=="")).count(),"con_sunedu":padron.filter(models.Docente.grados.any(models.DocenteGrado.verificado==True)).count(),"maestria":padron.filter(models.Docente.programas.any(and_(models.DocentePrograma.nivel=="Maestria",models.DocentePrograma.tipo_vinculo=="Afinidad"))).count(),"doctorado":padron.filter(models.Docente.programas.any(and_(models.DocentePrograma.nivel=="Doctorado",models.DocentePrograma.tipo_vinculo=="Afinidad"))).count(),"programas_catalogo":db.query(models.ProgramaPosgrado).filter_by(activo=True).count(),"programas_con_docentes":db.query(func.count(func.distinct(models.DocentePrograma.id_programa_catalogo))).filter(models.DocentePrograma.id_programa_catalogo.isnot(None)).scalar() or 0,"tramites_pendientes":db.query(models.DocenteTramite).filter(models.DocenteTramite.estado.in_(["Recibido","En_revision","Observado"])).count(),"actualizaciones_pendientes":db.query(models.DocenteActualizacion).filter(models.DocenteActualizacion.estado.in_(["Pendiente_envio","Enviada","Respondida","Observada"])).count()}
+
+
+@app.get("/api/programas-posgrado")
+def listar_programas_posgrado(db: Session = Depends(get_db)):
+    items=db.query(models.ProgramaPosgrado).filter_by(activo=True).order_by(models.ProgramaPosgrado.nivel,models.ProgramaPosgrado.nombre).all()
+    data=[]
+    for p in items:
+        asignados=db.query(models.DocentePrograma).filter_by(id_programa_catalogo=p.id_programa).count()
+        data.append({"id_programa":p.id_programa,"nivel":p.nivel,"nombre":p.nombre,"url_fuente":p.url_fuente,"docentes_asignados":asignados})
+    return {"total":len(data),"data":data}
+
+
+@app.get("/api/docente-actividades")
+def listar_actividad_docente(periodo:Optional[str]=None,db:Session=Depends(get_db)):
+    q=db.query(models.DocenteActividad)
+    if periodo: q=q.filter(or_(models.DocenteActividad.periodo.like(f"%{periodo}%"),models.DocenteActividad.periodo_academico.like(f"%{periodo}%")))
+    items=q.order_by(models.DocenteActividad.periodo.desc(),models.DocenteActividad.registros.desc()).limit(500).all()
+    return {"total":q.count(),"data":[{"id_actividad":a.id_actividad,"docente":a.docente.nombre_completo if a.docente else None,"periodo":a.periodo,"mes":a.mes,"periodo_academico":a.periodo_academico,"tipo_actividad":a.tipo_actividad,"programa":a.programa,"detalle":a.detalle,"registros":a.registros,"fuente":a.fuente} for a in items]}
+
+
+@app.get("/api/docente-actualizaciones")
+def listar_actualizaciones_docente(estado:Optional[str]=None,db:Session=Depends(get_db)):
+    q=db.query(models.DocenteActualizacion)
+    if estado:q=q.filter(models.DocenteActualizacion.estado==estado)
+    items=q.order_by(models.DocenteActualizacion.id_actualizacion.desc()).limit(300).all()
+    return {"total":q.count(),"data":[{"uuid":a.uuid,"docente":a.docente.nombre_completo,"id_docente":a.id_docente,"estado":a.estado,"correos_destino":a.correos_destino or [],"payload_propuesto":a.payload_propuesto,"fecha_expiracion":a.fecha_expiracion.isoformat(),"fecha_primer_acceso":a.fecha_primer_acceso.isoformat() if a.fecha_primer_acceso else None,"fecha_respuesta":a.fecha_respuesta.isoformat() if a.fecha_respuesta else None} for a in items]}
 
 
 @app.get("/api/docentes/{id_docente}")
@@ -5858,12 +5908,73 @@ def agregar_programa_docente(id_docente:int,payload:DocenteProgramaPayload,db:Se
     docente=db.query(models.Docente).filter_by(id_docente=id_docente).first()
     if not docente:raise HTTPException(status_code=404,detail="Docente no encontrado")
     if payload.nivel not in {"Maestria","Doctorado"}:raise HTTPException(status_code=400,detail="Nivel no válido")
-    programa=payload.programa.strip()
+    catalogo=db.query(models.ProgramaPosgrado).filter_by(id_programa=payload.id_programa_catalogo).first() if payload.id_programa_catalogo else None
+    if payload.id_programa_catalogo and not catalogo: raise HTTPException(status_code=404,detail="Programa institucional no encontrado")
+    programa=(catalogo.nombre if catalogo else payload.programa).strip()
     if not programa:raise HTTPException(status_code=400,detail="Indica el programa")
     item=db.query(models.DocentePrograma).filter_by(id_docente=id_docente,nivel=payload.nivel,programa=programa).first()
-    if item:item.especialidad=payload.especialidad or item.especialidad;item.estado=payload.estado
-    else:db.add(models.DocentePrograma(id_docente=id_docente,nivel=payload.nivel,programa=programa,especialidad=payload.especialidad,estado=payload.estado,fuente="Revisión manual"))
+    if item:item.especialidad=payload.especialidad or item.especialidad;item.estado=payload.estado;item.id_programa_catalogo=catalogo.id_programa if catalogo else item.id_programa_catalogo;item.tipo_vinculo=payload.tipo_vinculo
+    else:db.add(models.DocentePrograma(id_docente=id_docente,id_programa_catalogo=catalogo.id_programa if catalogo else None,nivel=catalogo.nivel if catalogo else payload.nivel,programa=programa,tipo_vinculo=payload.tipo_vinculo,especialidad=payload.especialidad,estado=payload.estado,fuente="Revisión manual"))
     db.commit();return {"status":"ok"}
+
+
+@app.get("/api/docentes/{id_docente}/sunedu")
+def preparar_consulta_sunedu(id_docente:int,db:Session=Depends(get_db)):
+    docente=db.query(models.Docente).filter_by(id_docente=id_docente).first()
+    if not docente: raise HTTPException(status_code=404,detail="Docente no encontrado")
+    return {"url":"https://documentos.sunedu.gob.pe/","dni":docente.dni,"nombre":docente.nombre_completo,"modo":"consulta_asistida","mensaje":"Copia el DNI y completa el CAPTCHA en el portal oficial. Adjunta luego la constancia a esta ficha."}
+
+
+@app.post("/api/docentes/{id_docente}/actualizaciones")
+def crear_actualizacion_docente(id_docente:int,payload:DocenteActualizacionCrearPayload,db:Session=Depends(get_db),current_user:models.UsuarioSistema=Depends(get_current_user)):
+    docente=db.query(models.Docente).filter_by(id_docente=id_docente).first()
+    if not docente: raise HTTPException(status_code=404,detail="Docente no encontrado")
+    correos=[]
+    if payload.canal_correo in {"institucional","ambos"} and docente.correo_institucional: correos.append(docente.correo_institucional)
+    if payload.canal_correo in {"personal","ambos"} and docente.correo_personal: correos.append(docente.correo_personal)
+    if not correos and docente.correo: correos.append(docente.correo)
+    if not correos: raise HTTPException(status_code=400,detail="El docente no tiene un correo registrado")
+    token=uuid_lib.uuid4().hex+uuid_lib.uuid4().hex
+    item=models.DocenteActualizacion(id_docente=id_docente,token_hash=hashlib.sha256(token.encode()).hexdigest(),estado="Pendiente_envio",correos_destino=list(dict.fromkeys(correos)),fecha_expiracion=datetime.utcnow()+timedelta(days=payload.vigencia_dias),creado_por_nombre=current_user.nombre_completo)
+    db.add(item);db.commit();db.refresh(item)
+    return {"status":"ok","uuid":item.uuid,"enlace":f"{EPG_PUBLIC_BASE_URL}/d/{token}","correos_destino":item.correos_destino,"mensaje":"Enlace preparado. No se envió ningún correo automáticamente."}
+
+
+def actualizacion_por_token(db,token):
+    item=db.query(models.DocenteActualizacion).filter_by(token_hash=hashlib.sha256(token.encode()).hexdigest()).first()
+    if not item: raise HTTPException(status_code=404,detail="Enlace no válido")
+    if item.fecha_expiracion<datetime.utcnow(): raise HTTPException(status_code=410,detail="El enlace venció")
+    return item
+
+
+@app.get("/api/actualizacion-docente/{token}")
+def ver_actualizacion_docente(token:str,db:Session=Depends(get_db)):
+    item=actualizacion_por_token(db,token)
+    if not item.fecha_primer_acceso: item.fecha_primer_acceso=datetime.utcnow();db.commit()
+    d=item.docente
+    return {"docente":d.nombre_completo,"correo_institucional":d.correo_institucional,"correo_personal":d.correo_personal,"telefono":d.telefono,"direccion":d.direccion,"especialidad":d.especialidad,"fecha_expiracion":item.fecha_expiracion.isoformat(),"estado":item.estado}
+
+
+@app.post("/api/actualizacion-docente/{token}")
+def responder_actualizacion_docente(token:str,payload:DocenteActualizacionResponderPayload,db:Session=Depends(get_db)):
+    item=actualizacion_por_token(db,token)
+    item.payload_propuesto=payload.model_dump();item.estado="Respondida";item.fecha_respuesta=datetime.utcnow();db.commit()
+    return {"status":"ok","mensaje":"Información enviada a Coordinación EPG para revisión."}
+
+
+@app.put("/api/docente-actualizaciones/{referencia}/revision")
+def revisar_actualizacion_docente(referencia:str,payload:DocenteActualizacionRevisarPayload,db:Session=Depends(get_db)):
+    item=db.query(models.DocenteActualizacion).filter_by(uuid=referencia).first()
+    if not item: raise HTTPException(status_code=404,detail="Solicitud no encontrada")
+    if payload.accion=="Aprobar":
+        for campo in ("correo_institucional","correo_personal","telefono","direccion","especialidad"):
+            valor=(item.payload_propuesto or {}).get(campo)
+            if valor is not None: setattr(item.docente,campo,valor.strip() or None)
+        item.estado="Aprobada";item.docente.fuente_actualizacion="Actualización validada por Coordinación EPG"
+    elif payload.accion=="Observar": item.estado="Observada"
+    else: item.estado="Rechazada"
+    item.nota_revision=payload.nota;item.fecha_revision=datetime.utcnow();db.commit()
+    return {"status":"ok","estado":item.estado}
 
 
 @app.post("/api/docentes/{id_docente}/documentos")
@@ -5905,22 +6016,49 @@ def listar_tramites_docentes(estado:Optional[str]=None,db:Session=Depends(get_db
     q=db.query(models.DocenteTramite)
     if estado:q=q.filter(models.DocenteTramite.estado==estado)
     items=q.order_by(models.DocenteTramite.fecha_actualizacion.desc()).limit(300).all()
-    return {"total":len(items),"data":[{"uuid":x.uuid,"id_docente":x.id_docente,"docente":x.docente.nombre_completo if x.docente else None,"canal":x.canal,"tipo":x.tipo,"estado":x.estado,"referencia":x.referencia,"descripcion":x.descripcion,"fecha_recepcion":x.fecha_recepcion.isoformat()} for x in items]}
+    return {"total":len(items),"data":[serializar_tramite_docente(x) for x in items]}
+
+
+def serializar_tramite_docente(x):
+    return {"uuid":x.uuid,"id_docente":x.id_docente,"docente":x.docente.nombre_completo if x.docente else None,"canal":x.canal,"tipo":x.tipo,"estado":x.estado,"referencia":x.referencia,"descripcion":x.descripcion,"fecha_recepcion":x.fecha_recepcion.isoformat(),"fecha_actualizacion":x.fecha_actualizacion.isoformat(),"documentos":[{"uuid":d.uuid,"nombre_archivo":d.nombre_archivo,"fecha_carga":d.fecha_carga.isoformat()} for d in x.documentos],"eventos":[{"accion":e.accion,"estado_anterior":e.estado_anterior,"estado_nuevo":e.estado_nuevo,"nota":e.nota,"usuario_nombre":e.usuario_nombre,"fecha_registro":e.fecha_registro.isoformat()} for e in x.eventos]}
 
 
 @app.post("/api/docente-tramites")
 def crear_tramite_docente(payload:DocenteTramitePayload,db:Session=Depends(get_db),current_user:models.UsuarioSistema=Depends(get_current_user)):
     item=models.DocenteTramite(**payload.model_dump(),creado_por_nombre=current_user.nombre_completo)
-    db.add(item);db.commit();db.refresh(item);return {"status":"ok","uuid":item.uuid}
+    db.add(item);db.flush();db.add(models.DocenteTramiteEvento(id_tramite_docente=item.id_tramite_docente,accion="registrado",estado_nuevo=item.estado,nota=item.descripcion,usuario_nombre=current_user.nombre_completo));db.commit();db.refresh(item);return {"status":"ok","uuid":item.uuid}
 
 
 @app.put("/api/docente-tramites/{referencia}/estado")
 def cambiar_tramite_docente(referencia:str,payload:DocenteTramiteEstadoPayload,db:Session=Depends(get_db),current_user:models.UsuarioSistema=Depends(get_current_user)):
     item=db.query(models.DocenteTramite).filter(models.DocenteTramite.uuid==referencia).first()
     if not item:raise HTTPException(status_code=404,detail="Trámite docente no encontrado")
-    item.estado=payload.estado
+    anterior=item.estado;item.estado=payload.estado
     if payload.descripcion:item.descripcion=payload.descripcion
+    db.add(models.DocenteTramiteEvento(id_tramite_docente=item.id_tramite_docente,accion="estado_actualizado",estado_anterior=anterior,estado_nuevo=payload.estado,nota=payload.descripcion,usuario_nombre=current_user.nombre_completo))
     db.commit();return {"status":"ok"}
+
+
+@app.post("/api/docente-tramites/{referencia}/documentos")
+def cargar_documento_tramite_docente(referencia:str,archivo:UploadFile=File(...),db:Session=Depends(get_db),current_user:models.UsuarioSistema=Depends(get_current_user)):
+    item=db.query(models.DocenteTramite).filter_by(uuid=referencia).first()
+    if not item: raise HTTPException(status_code=404,detail="Trámite docente no encontrado")
+    nombre=Path(archivo.filename or "documento").name;contenido=archivo.file.read()
+    if not contenido: raise HTTPException(status_code=400,detail="El archivo está vacío")
+    if len(contenido)>50*1024*1024: raise HTTPException(status_code=413,detail="El archivo supera 50 MB")
+    digest=hashlib.sha256(contenido).hexdigest();existente=db.query(models.DocenteTramiteDocumento).filter_by(id_tramite_docente=item.id_tramite_docente,hash_sha256=digest).first()
+    if existente:return {"status":"ok","uuid":existente.uuid,"mensaje":"El documento ya estaba registrado"}
+    extension=Path(nombre).suffix.lower();carpeta=Path(valor_configuracion("EPG_PRIVATE_UPLOADS_DIR","/opt/sistema_posgrado/uploads_privados"))/"tramites_docentes"/item.uuid;carpeta.mkdir(parents=True,exist_ok=True)
+    destino=carpeta/f"{uuid_lib.uuid4().hex}{extension}";destino.write_bytes(contenido)
+    documento=models.DocenteTramiteDocumento(id_tramite_docente=item.id_tramite_docente,nombre_archivo=nombre,ruta_archivo=str(destino),hash_sha256=digest,cargado_por_nombre=current_user.nombre_completo)
+    db.add(documento);db.add(models.DocenteTramiteEvento(id_tramite_docente=item.id_tramite_docente,accion="documento_cargado",estado_anterior=item.estado,estado_nuevo=item.estado,nota=nombre,usuario_nombre=current_user.nombre_completo));db.commit();db.refresh(documento);return {"status":"ok","uuid":documento.uuid}
+
+
+@app.get("/api/docente-tramite-documentos/{referencia}/archivo")
+def descargar_documento_tramite_docente(referencia:str,db:Session=Depends(get_db)):
+    item=db.query(models.DocenteTramiteDocumento).filter_by(uuid=referencia).first()
+    if not item or not Path(item.ruta_archivo).is_file():raise HTTPException(status_code=404,detail="Documento no disponible")
+    return FileResponse(item.ruta_archivo,filename=item.nombre_archivo)
 
 
 @app.post("/api/docentes")
