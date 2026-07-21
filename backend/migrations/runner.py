@@ -27,6 +27,7 @@ MIGRACIONES = [
     ("20260729_documentos_seguimiento_docentes", "migrations.versions.20260729_documentos_seguimiento_docentes"),
     ("20260730_gestion_docente_integral", "migrations.versions.20260730_gestion_docente_integral"),
     ("20260731_expediente_tramite_docente", "migrations.versions.20260731_expediente_tramite_docente"),
+    ("20260801_actualizacion_docente_documental", "migrations.versions.20260801_actualizacion_docente_documental"),
 ]
 
 

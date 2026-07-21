@@ -674,3 +674,10 @@ sudo journalctl -u epg-bot.service -n 100 --no-pager
 - El autoservicio `/d/:token` permite proponer cambios sin credenciales y con vencimiento. La propuesta no modifica el padrón hasta aprobación de Coordinación; crear el enlace no envía correo.
 - La consulta SUNEDU pública exige CAPTCHA. El sistema abre la fuente oficial y copia el DNI; la constancia se adjunta a la ficha. Para consulta masiva se necesita PIDE o Web Service institucional, no scraping.
 - Migraciones aplicadas: `20260730_gestion_docente_integral` y `20260731_expediente_tramite_docente`. Backup previo: `backups/pre_coordinacion_docente_20260721_130455.sql`.
+## Mesa docente documental y cobertura - 2026-07-21
+
+- La fuente docente principal es `/opt/DOCENTES/Docentes_por_programa_EPG_UAC_CON_DICTADOS_ACTUALIZADO_v4_con_contactos.xlsx`: tiene 26 hojas. `SUNEDU_DETALLE` aportó 244 grados verificados, 243 con fecha de diploma; las hojas `Doc - ...` y `Mst - ...` aportaron 487 compatibilidades por campo. No equivalen a asignaciones institucionales exactas.
+- La mesa `i7` permite filtrar colas desde sus indicadores, navegar los 15 programas de Maestría y 7 de Doctorado, abrir candidatos por especialidad y confirmar una asignación concreta sin perder la evidencia fuente.
+- El portal asistido de verificación es `https://enlinea.sunedu.gob.pe/`. No se automatiza CAPTCHA ni se declara una verificación por inferencia.
+- Los enlaces temporales docentes aceptan CV, ficha SUNEDU, constancia u otro respaldo. El extractor propone DNI sólo si está etiquetado, correos, teléfono, especialidad y menciones de grados; Coordinación compara, corrige y valida cada documento antes de aprobar.
+- La migración `20260801_actualizacion_docente_documental` está aplicada. Respaldo: `backups/post_mesa_docente_documental_20260721_150242.sql` (56.3 MB). El flujo sintético completo pasó y sus registros fueron eliminados.

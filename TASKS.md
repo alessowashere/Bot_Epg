@@ -688,3 +688,14 @@ npm run build
 - [x] Añadir enlaces temporales para que el docente proponga cambios y una cola de aprobación por Coordinación. El envío automático continúa apagado.
 - [ ] Solicitar acceso institucional a PIDE o al Web Service SUNEDU para verificación masiva.
 - [ ] Integrar una fuente de programación que incluya asignatura/curso; los Excel actuales sólo entregan mes y período.
+
+## Mesa docente documental y cobertura - 2026-07-21
+
+- [x] Auditar las 26 hojas de `Docentes_por_programa_EPG_UAC_CON_DICTADOS_ACTUALIZADO_v4_con_contactos.xlsx`: `SUNEDU_DETALLE` conserva grado, clasificación, universidad, país y fecha de diploma; la base contiene 244 grados verificados y 243 fechas disponibles.
+- [x] Convertir Padrón vigente, Especialidad pendiente y Evidencia SUNEDU en filtros accionables, no tarjetas informativas.
+- [x] Diseccionar cobertura por Maestría/Doctorado y por los 22 programas oficiales. Cada programa muestra asignados confirmados y candidatos sugeridos por las hojas del Excel, con especialidad y regla de antigüedad.
+- [x] Corregir la consulta asistida al portal `https://enlinea.sunedu.gob.pe/`.
+- [x] Permitir que el enlace temporal docente reciba CV, ficha SUNEDU, constancias e imágenes mediante arrastrar y soltar; extraer DNI etiquetado, correos, teléfono, especialidad y menciones de grados.
+- [x] Crear mesa de revisión de actualizaciones: comparación con ficha actual, corrección de propuesta, apertura y validación individual de documentos, observación o aprobación auditada.
+- [x] Aplicar migración `20260801_actualizacion_docente_documental`; respaldo posterior `backups/post_mesa_docente_documental_20260721_150242.sql`.
+- [ ] Coordinación debe confirmar las asignaciones exactas a programas. Las 487 relaciones importadas son compatibilidades académicas propuestas y no reemplazan esa decisión.

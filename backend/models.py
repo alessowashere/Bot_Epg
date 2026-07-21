@@ -258,6 +258,25 @@ class DocenteActualizacion(Base):
     fecha_revision = Column(DateTime, nullable=True)
     creado_por_nombre = Column(String(150), nullable=True)
     docente = relationship("Docente", back_populates="actualizaciones")
+    documentos = relationship("DocenteActualizacionDocumento", back_populates="actualizacion", cascade="all, delete-orphan")
+
+
+class DocenteActualizacionDocumento(Base):
+    __tablename__ = "docente_actualizacion_documentos"
+
+    id_documento = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), unique=True, nullable=False, default=nuevo_uuid, index=True)
+    id_actualizacion = Column(Integer, ForeignKey("docente_actualizaciones.id_actualizacion", ondelete="CASCADE"), nullable=False, index=True)
+    tipo = Column(String(40), nullable=False, default="Otro", index=True)
+    nombre_archivo = Column(String(255), nullable=False)
+    ruta_archivo = Column(String(500), nullable=False)
+    hash_sha256 = Column(String(64), nullable=False, index=True)
+    texto_extraido = Column(Text, nullable=True)
+    datos_sugeridos = Column(JSON, nullable=True)
+    estado_revision = Column(String(30), nullable=False, default="Pendiente", index=True)
+    nota_revision = Column(Text, nullable=True)
+    fecha_carga = Column(DateTime, nullable=False, default=datetime.utcnow)
+    actualizacion = relationship("DocenteActualizacion", back_populates="documentos")
 
 
 class ExpedienteTesis(Base):

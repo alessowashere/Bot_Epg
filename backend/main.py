@@ -524,11 +524,14 @@ class DocenteActualizacionCrearPayload(BaseModel):
 
 
 class DocenteActualizacionResponderPayload(BaseModel):
+    dni: Optional[str] = Field(None, max_length=15)
     correo_institucional: Optional[str] = Field(None, max_length=150)
     correo_personal: Optional[str] = Field(None, max_length=150)
     telefono: Optional[str] = Field(None, max_length=40)
     direccion: Optional[str] = Field(None, max_length=255)
     especialidad: Optional[str] = Field(None, max_length=150)
+    titulo_profesional: Optional[str] = Field(None, max_length=500)
+    universidad_procedencia: Optional[str] = Field(None, max_length=500)
     nota: Optional[str] = Field(None, max_length=1000)
 
 
@@ -5834,12 +5837,15 @@ def serializar_docente_operativo(docente, db, detalle=False):
 
 
 @app.get("/api/docentes")
-def listar_docentes(busqueda: Optional[str]=None, nivel: Optional[str]=None, programa: Optional[str]=None, estado: Optional[str]=None, verificacion: Optional[str]=None, page:int=Query(1,ge=1), per_page:int=Query(40,ge=1,le=200), db: Session = Depends(get_db)):
+def listar_docentes(busqueda: Optional[str]=None, nivel: Optional[str]=None, programa: Optional[str]=None, estado: Optional[str]=None, verificacion: Optional[str]=None, especialidad_pendiente:bool=False, con_sunedu:Optional[bool]=None, page:int=Query(1,ge=1), per_page:int=Query(40,ge=1,le=200), db: Session = Depends(get_db)):
     query = db.query(models.Docente)
     if busqueda:
         like=f"%{busqueda.strip()}%"; query=query.filter(or_(models.Docente.nombre_completo.like(like),models.Docente.dni.like(like),models.Docente.correo.like(like),models.Docente.especialidad.like(like)))
     if estado: query=query.filter(models.Docente.estado==estado)
     if verificacion: query=query.filter(models.Docente.estado_verificacion==verificacion)
+    if especialidad_pendiente: query=query.filter(or_(models.Docente.especialidad.is_(None),models.Docente.especialidad==""))
+    if con_sunedu is True: query=query.filter(models.Docente.grados.any(models.DocenteGrado.verificado==True))
+    elif con_sunedu is False: query=query.filter(~models.Docente.grados.any(models.DocenteGrado.verificado==True))
     if nivel: query=query.filter(models.Docente.programas.any(models.DocentePrograma.nivel==nivel))
     if programa: query=query.filter(models.Docente.programas.any(models.DocentePrograma.programa.like(f"%{programa}%")))
     total, paginas, docentes = paginar(query.order_by(models.Docente.nombre_completo),page,per_page)
@@ -5861,8 +5867,39 @@ def listar_programas_posgrado(db: Session = Depends(get_db)):
     data=[]
     for p in items:
         asignados=db.query(models.DocentePrograma).filter_by(id_programa_catalogo=p.id_programa).count()
-        data.append({"id_programa":p.id_programa,"nivel":p.nivel,"nombre":p.nombre,"url_fuente":p.url_fuente,"docentes_asignados":asignados})
+        candidatos=candidatos_programa_docente(db,p)
+        especialidades=sorted({x["especialidad"] for x in candidatos if x.get("especialidad")})
+        data.append({"id_programa":p.id_programa,"nivel":p.nivel,"nombre":p.nombre,"url_fuente":p.url_fuente,"docentes_asignados":asignados,"docentes_candidatos":len(candidatos),"especialidades":especialidades[:12]})
     return {"total":len(data),"data":data}
+
+
+def campos_afinidad_programa(programa):
+    nombre=ascii_mayusculas(programa.nombre)
+    if programa.nivel=="Doctorado":
+        reglas={"ADMINISTRACION":["Administración"],"EDUCACION":["Ciencias Educación"],"CONTABILIDAD":["Economía/Contab"],"SALUD":["Salud"],"PSICOLOGIA":["Psicología"],"MEDIO AMBIENTE":["Medio Ambiente"],"DERECHO":["Derecho"]}
+    else:
+        reglas={"ADMINISTRACION":["Administración Neg"],"DOCENCIA":["Docencia Univ","Educación"],"CONTABILIDAD":["Econ Contab"],"DERECHO":["Derecho"],"INGENIERIA CIVIL":["Ingeniería Const"],"ESTOMATOLOG":["Salud"],"ENFERMERIA":["Salud"],"SALUD COMUNITARIA":["Salud"],"SEGURIDAD INDUSTRIAL":["Medio Ambiente","Ingeniería Const"],"ESTADISTICA":["Otros","Econ Contab"]}
+    for señal,campos in reglas.items():
+        if señal in nombre:return campos
+    return ["Otros"]
+
+
+def candidatos_programa_docente(db,programa):
+    campos={ascii_mayusculas(x) for x in campos_afinidad_programa(programa)}
+    candidatos={}
+    afinidades=db.query(models.DocentePrograma).join(models.Docente).filter(models.DocentePrograma.nivel==programa.nivel,models.DocentePrograma.tipo_vinculo=="Afinidad",models.Docente.estado_verificacion=="Padron_EPG").all()
+    for a in afinidades:
+        if ascii_mayusculas(a.programa) not in campos:continue
+        d=a.docente;candidatos[d.id_docente]={"id_docente":d.id_docente,"nombre_completo":d.nombre_completo,"dni":d.dni,"especialidad":d.especialidad,"campo_afinidad":a.programa,"grados_total":len(d.grados),"cumple_antiguedad":serializar_docente_operativo(d,db)["cumple_antiguedad"],"estado_verificacion":d.estado_verificacion}
+    return sorted(candidatos.values(),key=lambda x:(not x["cumple_antiguedad"],x["nombre_completo"]))
+
+
+@app.get("/api/programas-posgrado/{id_programa}/docentes")
+def listar_docentes_programa(id_programa:int,db:Session=Depends(get_db)):
+    programa=db.query(models.ProgramaPosgrado).filter_by(id_programa=id_programa,activo=True).first()
+    if not programa:raise HTTPException(status_code=404,detail="Programa no encontrado")
+    asignados=db.query(models.DocentePrograma).filter_by(id_programa_catalogo=id_programa).all()
+    return {"programa":{"id_programa":programa.id_programa,"nivel":programa.nivel,"nombre":programa.nombre,"campos_afinidad":campos_afinidad_programa(programa)},"asignados":[serializar_docente_operativo(x.docente,db) for x in asignados],"candidatos":candidatos_programa_docente(db,programa)}
 
 
 @app.get("/api/docente-actividades")
@@ -5878,7 +5915,11 @@ def listar_actualizaciones_docente(estado:Optional[str]=None,db:Session=Depends(
     q=db.query(models.DocenteActualizacion)
     if estado:q=q.filter(models.DocenteActualizacion.estado==estado)
     items=q.order_by(models.DocenteActualizacion.id_actualizacion.desc()).limit(300).all()
-    return {"total":q.count(),"data":[{"uuid":a.uuid,"docente":a.docente.nombre_completo,"id_docente":a.id_docente,"estado":a.estado,"correos_destino":a.correos_destino or [],"payload_propuesto":a.payload_propuesto,"fecha_expiracion":a.fecha_expiracion.isoformat(),"fecha_primer_acceso":a.fecha_primer_acceso.isoformat() if a.fecha_primer_acceso else None,"fecha_respuesta":a.fecha_respuesta.isoformat() if a.fecha_respuesta else None} for a in items]}
+    return {"total":q.count(),"data":[serializar_actualizacion_docente(a) for a in items]}
+
+
+def serializar_actualizacion_docente(a):
+    return {"uuid":a.uuid,"docente":a.docente.nombre_completo,"id_docente":a.id_docente,"estado":a.estado,"correos_destino":a.correos_destino or [],"payload_propuesto":a.payload_propuesto or {},"nota_revision":a.nota_revision,"fecha_expiracion":a.fecha_expiracion.isoformat(),"fecha_primer_acceso":a.fecha_primer_acceso.isoformat() if a.fecha_primer_acceso else None,"fecha_respuesta":a.fecha_respuesta.isoformat() if a.fecha_respuesta else None,"documentos":[{"uuid":d.uuid,"tipo":d.tipo,"nombre_archivo":d.nombre_archivo,"datos_sugeridos":d.datos_sugeridos or {},"estado_revision":d.estado_revision,"nota_revision":d.nota_revision,"fecha_carga":d.fecha_carga.isoformat(),"tiene_texto":bool(d.texto_extraido)} for d in a.documentos]}
 
 
 @app.get("/api/docentes/{id_docente}")
@@ -5922,7 +5963,7 @@ def agregar_programa_docente(id_docente:int,payload:DocenteProgramaPayload,db:Se
 def preparar_consulta_sunedu(id_docente:int,db:Session=Depends(get_db)):
     docente=db.query(models.Docente).filter_by(id_docente=id_docente).first()
     if not docente: raise HTTPException(status_code=404,detail="Docente no encontrado")
-    return {"url":"https://documentos.sunedu.gob.pe/","dni":docente.dni,"nombre":docente.nombre_completo,"modo":"consulta_asistida","mensaje":"Copia el DNI y completa el CAPTCHA en el portal oficial. Adjunta luego la constancia a esta ficha."}
+    return {"url":"https://enlinea.sunedu.gob.pe/","dni":docente.dni,"nombre":docente.nombre_completo,"modo":"consulta_asistida","mensaje":"Copia el DNI y completa la consulta en SUNEDU en Línea. Adjunta luego la ficha a esta mesa para conservar la evidencia."}
 
 
 @app.post("/api/docentes/{id_docente}/actualizaciones")
@@ -5952,7 +5993,7 @@ def ver_actualizacion_docente(token:str,db:Session=Depends(get_db)):
     item=actualizacion_por_token(db,token)
     if not item.fecha_primer_acceso: item.fecha_primer_acceso=datetime.utcnow();db.commit()
     d=item.docente
-    return {"docente":d.nombre_completo,"correo_institucional":d.correo_institucional,"correo_personal":d.correo_personal,"telefono":d.telefono,"direccion":d.direccion,"especialidad":d.especialidad,"fecha_expiracion":item.fecha_expiracion.isoformat(),"estado":item.estado}
+    return {"docente":d.nombre_completo,"dni":d.dni,"correo_institucional":d.correo_institucional,"correo_personal":d.correo_personal,"telefono":d.telefono,"direccion":d.direccion,"especialidad":d.especialidad,"titulo_profesional":d.titulo_profesional,"universidad_procedencia":d.universidad_procedencia,"fecha_expiracion":item.fecha_expiracion.isoformat(),"estado":item.estado,"documentos":[{"uuid":x.uuid,"tipo":x.tipo,"nombre_archivo":x.nombre_archivo,"estado_revision":x.estado_revision,"fecha_carga":x.fecha_carga.isoformat(),"datos_sugeridos":x.datos_sugeridos or {}} for x in item.documentos]}
 
 
 @app.post("/api/actualizacion-docente/{token}")
@@ -5962,14 +6003,83 @@ def responder_actualizacion_docente(token:str,payload:DocenteActualizacionRespon
     return {"status":"ok","mensaje":"Información enviada a Coordinación EPG para revisión."}
 
 
+def sugerir_datos_documento_docente(texto):
+    texto=texto or "";sugeridos={}
+    correos=list(dict.fromkeys(re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}",texto,re.I)))
+    if correos:
+        institucional=next((x for x in correos if x.lower().endswith("@uandina.edu.pe")),None)
+        personal=next((x for x in correos if not x.lower().endswith("@uandina.edu.pe")),None)
+        if institucional:sugeridos["correo_institucional"]=institucional
+        if personal:sugeridos["correo_personal"]=personal
+    dni_hallado=re.search(r"(?i)\b(?:DNI|DOCUMENTO(?: DE IDENTIDAD)?)\s*(?:N[°º.]?\s*)?[:\-]?\s*(\d{8})\b",texto)
+    if dni_hallado:sugeridos["dni"]=dni_hallado.group(1)
+    telefono=re.search(r"(?i)\b(?:CELULAR|TELEFONO|TELÉFONO)\s*[:\-]?\s*(9\d{8})\b",texto)
+    if telefono:sugeridos["telefono"]=telefono.group(1)
+    especialidad=re.search(r"(?im)^\s*(?:ESPECIALIDAD|PROFESION|PROFESIÓN)\s*[:\-]\s*([^\n\r]{3,150})",texto)
+    if especialidad:sugeridos["especialidad"]=especialidad.group(1).strip(" .")
+    grados=[]
+    for m in re.finditer(r"(?i)\b(?:MAESTR[ÍI]A|MAG[IÍ]STER|DOCTORADO|DOCTOR)\b[^\n\r]{0,180}",texto):
+        valor=re.sub(r"\s+"," ",m.group(0)).strip(" .")
+        if valor not in grados:grados.append(valor)
+    if grados:sugeridos["grados_detectados"]=grados[:8]
+    return sugeridos
+
+
+@app.post("/api/actualizacion-docente/{token}/documentos")
+def cargar_documento_actualizacion_publica(token:str,tipo:str=Form("Otro"),archivo:UploadFile=File(...),db:Session=Depends(get_db)):
+    item=actualizacion_por_token(db,token);nombre=Path(archivo.filename or "documento").name;extension=Path(nombre).suffix.lower()
+    if extension not in {".pdf",".docx",".doc",".xlsx",".xls",".jpg",".jpeg",".png"}:raise HTTPException(status_code=400,detail="Formato no admitido")
+    contenido=archivo.file.read()
+    if not contenido:raise HTTPException(status_code=400,detail="El archivo está vacío")
+    if len(contenido)>50*1024*1024:raise HTTPException(status_code=413,detail="El archivo supera 50 MB")
+    digest=hashlib.sha256(contenido).hexdigest();existente=db.query(models.DocenteActualizacionDocumento).filter_by(id_actualizacion=item.id_actualizacion,hash_sha256=digest).first()
+    if existente:return {"status":"ok","uuid":existente.uuid,"mensaje":"El archivo ya estaba cargado"}
+    carpeta=Path(valor_configuracion("EPG_PRIVATE_UPLOADS_DIR","/opt/sistema_posgrado/uploads_privados"))/"actualizaciones_docentes"/item.uuid;carpeta.mkdir(parents=True,exist_ok=True)
+    destino=carpeta/f"{uuid_lib.uuid4().hex}{extension}";destino.write_bytes(contenido)
+    try:texto=extraer_texto_archivo(str(destino))[:250000] or None
+    except Exception:texto=None
+    documento=models.DocenteActualizacionDocumento(id_actualizacion=item.id_actualizacion,tipo=tipo,nombre_archivo=nombre,ruta_archivo=str(destino),hash_sha256=digest,texto_extraido=texto,datos_sugeridos=sugerir_datos_documento_docente(texto))
+    db.add(documento);db.commit();db.refresh(documento);return {"status":"ok","uuid":documento.uuid,"datos_sugeridos":documento.datos_sugeridos or {},"texto_extraido":bool(texto)}
+
+
+@app.get("/api/docente-actualizacion-documentos/{referencia}/archivo")
+def descargar_documento_actualizacion(referencia:str,db:Session=Depends(get_db)):
+    item=db.query(models.DocenteActualizacionDocumento).filter_by(uuid=referencia).first()
+    if not item or not Path(item.ruta_archivo).is_file():raise HTTPException(status_code=404,detail="Documento no disponible")
+    return FileResponse(item.ruta_archivo,filename=item.nombre_archivo)
+
+
+@app.put("/api/docente-actualizaciones/{referencia}/propuesta")
+def editar_propuesta_actualizacion(referencia:str,payload:DocenteActualizacionResponderPayload,db:Session=Depends(get_db)):
+    item=db.query(models.DocenteActualizacion).filter_by(uuid=referencia).first()
+    if not item:raise HTTPException(status_code=404,detail="Solicitud no encontrada")
+    item.payload_propuesto=payload.model_dump();db.commit();return {"status":"ok","actualizacion":serializar_actualizacion_docente(item)}
+
+
+@app.put("/api/docente-actualizacion-documentos/{referencia}/revision")
+def revisar_documento_actualizacion(referencia:str,payload:DocenteDocumentoRevisionPayload,db:Session=Depends(get_db)):
+    item=db.query(models.DocenteActualizacionDocumento).filter_by(uuid=referencia).first()
+    if not item:raise HTTPException(status_code=404,detail="Documento no encontrado")
+    if payload.estado not in {"Pendiente","Validado","Observado"}:raise HTTPException(status_code=400,detail="Estado no válido")
+    item.estado_revision=payload.estado;item.nota_revision=payload.nota;db.commit();return {"status":"ok"}
+
+
 @app.put("/api/docente-actualizaciones/{referencia}/revision")
 def revisar_actualizacion_docente(referencia:str,payload:DocenteActualizacionRevisarPayload,db:Session=Depends(get_db)):
     item=db.query(models.DocenteActualizacion).filter_by(uuid=referencia).first()
     if not item: raise HTTPException(status_code=404,detail="Solicitud no encontrada")
     if payload.accion=="Aprobar":
-        for campo in ("correo_institucional","correo_personal","telefono","direccion","especialidad"):
+        dni_propuesto=((item.payload_propuesto or {}).get("dni") or "").strip() or None
+        if dni_propuesto:
+            conflicto=db.query(models.Docente).filter(models.Docente.dni==dni_propuesto,models.Docente.id_docente!=item.id_docente).first()
+            if conflicto:raise HTTPException(status_code=409,detail=f"El DNI {dni_propuesto} ya pertenece a {conflicto.nombre_completo}. Revisa la identidad antes de aprobar.")
+        for campo in ("dni","correo_institucional","correo_personal","telefono","direccion","especialidad","titulo_profesional","universidad_procedencia"):
             valor=(item.payload_propuesto or {}).get(campo)
             if valor is not None: setattr(item.docente,campo,valor.strip() or None)
+        for documento in item.documentos:
+            if documento.estado_revision!="Validado":continue
+            existente=db.query(models.DocenteDocumento).filter_by(id_docente=item.id_docente,hash_sha256=documento.hash_sha256).first()
+            if not existente:db.add(models.DocenteDocumento(id_docente=item.id_docente,tipo=documento.tipo,nombre_archivo=documento.nombre_archivo,ruta_archivo=documento.ruta_archivo,hash_sha256=documento.hash_sha256,texto_extraido=documento.texto_extraido,estado_revision="Validado",nota_revision="Validado desde actualización docente",cargado_por_nombre="Actualización docente"))
         item.estado="Aprobada";item.docente.fuente_actualizacion="Actualización validada por Coordinación EPG"
     elif payload.accion=="Observar": item.estado="Observada"
     else: item.estado="Rechazada"

@@ -41,7 +41,7 @@ Secretaría elige correo institucional, personal o ambos, modalidad y duración.
 
 ## Actualización por enlace
 
-El enlace `/d/:token` no requiere credenciales, vence y sólo permite proponer correo, teléfono, dirección, especialidad y una nota. Abrirlo y responderlo queda registrado. Ningún dato cambia hasta que Coordinación pulse **Aprobar**. Crear el enlace no envía correo automáticamente.
+El enlace `/d/:token` no requiere credenciales y vence. Permite proponer DNI, contacto, dirección, título, universidad y especialidad, además de adjuntar CV, ficha SUNEDU, constancias o imágenes. Abrirlo, cargar evidencia y responder queda registrado. Ningún dato cambia hasta que Coordinación revise los archivos y pulse **Aprobar**. Crear el enlace no envía correo automáticamente.
 
 ## Límites actuales
 
@@ -50,3 +50,23 @@ El enlace `/d/:token` no requiere credenciales, vence y sólo permite proponer c
 - No se corrigen errores de fuente por intuición; se resuelven en la ficha.
 - La regla de tres años requiere sustento normativo interno antes de considerarse definitiva.
 - Los Excel originales y archivos privados no se incorporan a Git.
+## Flujo documental actualizado
+
+## Fuentes y alcance
+
+El padrón vigente se concilia desde `Docentes_por_programa_EPG_UAC_CON_DICTADOS_ACTUALIZADO_v4_con_contactos.xlsx`. Las hojas aportan tres capas distintas:
+
+- `Todos`: contacto, título, procedencia y datos generales.
+- `SUNEDU_DETALLE`: grados, clasificación, universidad, país y fecha de diploma.
+- `Doc - ...` y `Mst - ...`: compatibilidad académica por campo. Es una sugerencia; no confirma por sí sola que el docente esté asignado a un programa oficial.
+
+## Trabajo diario
+
+1. Usa los indicadores superiores para abrir directamente Padrón vigente, Especialidad pendiente o Evidencia SUNEDU.
+2. En **Programas y cobertura**, elige Maestrías o Doctorados y abre un programa. Revisa candidatos por especialidad y confirma únicamente las asignaciones sustentadas.
+3. En la ficha docente, **Consultar SUNEDU** abre `https://enlinea.sunedu.gob.pe/` y copia el DNI cuando existe. La ficha descargada debe adjuntarse y validarse.
+4. **Solicitar actualización** genera un enlace temporal, pero no envía correo automáticamente. El docente puede corregir datos y arrastrar CV, ficha SUNEDU o constancias.
+5. En **Actualización docente**, abre **Revisar**. Compara datos actuales y propuestos, abre cada archivo, aplica las sugerencias pertinentes y marca el documento Validado u Observado.
+6. **Aprobar cambios validados** actualiza el padrón y conserva la evidencia. Un DNI ya utilizado bloquea la aprobación para evitar mezclar identidades.
+
+El extractor ayuda a llenar campos, pero nunca certifica un grado, especialidad o programa sin revisión humana.
